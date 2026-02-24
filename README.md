@@ -147,8 +147,13 @@ c, _ := sora.New(proxy)
 | `PollImageTask(accessToken, taskID, interval, timeout, onProgress)` | 轮询图片任务 |
 | `PollVideoTask(accessToken, taskID, interval, timeout, onProgress)` | 轮询视频任务 |
 | `GetDownloadURL(accessToken, taskID)` | 获取视频下载链接 |
+| `RefreshAccessToken(refreshToken, clientID)` | 刷新获取专用 access_token（去水印用） |
+| `GetWatermarkFreeURL(accessToken, videoID)` | 获取无水印下载链接 |
+| `QueryImageTaskOnce(accessToken, taskID, startTime)` | 单次查询图片任务状态（非阻塞） |
+| `QueryVideoTaskOnce(accessToken, taskID, startTime, maxProgress)` | 单次查询视频任务状态（非阻塞） |
 | `ExtractStyle(prompt)` | 从提示词提取 `{style}` 风格 |
 | `ExtractRemixID(text)` | 从 URL 提取 Remix 视频 ID |
+| `ExtractVideoID(text)` | 从分享链接提取视频 ID |
 | `ParseProxy(proxy)` | 解析代理字符串 |
 
 ### 视频参数
@@ -170,7 +175,12 @@ c, _ := sora.New(proxy)
 
 ## CLI 工具
 
-提供交互式命令行工具，支持全部功能：
+提供基于 [Bubble Tea](https://github.com/charmbracelet/bubbletea) 的交互式 TUI 工具，支持全部功能：
+
+- 键盘导航（↑/↓ 菜单选择，Tab 切换字段，←/→ 选择选项）
+- 分组功能菜单（图片生成 / 视频生成 / 工具 / 设置）
+- 动态参数表单（不同功能自动展示对应参数）
+- 任务进度条和状态显示
 
 ```bash
 go install github.com/DouDOU-start/go-sora2api/cmd/sora2api@latest
@@ -190,13 +200,21 @@ go build -o sora2api ./cmd/sora2api/
 go-sora2api/
 ├── sora/                    # 公开 SDK 包
 │   ├── client.go            # 客户端基础 + Sentinel Token
-│   ├── task.go              # 任务创建（Upload/Image/Video/Remix/Enhance）
-│   ├── poll.go              # 任务轮询 + 下载链接
-│   ├── style.go             # 风格提取 + Remix ID 解析
+│   ├── task.go              # 任务创建（Upload/Image/Video/Remix/Enhance/Watermark）
+│   ├── poll.go              # 任务轮询 + 单次查询 + 下载链接
+│   ├── style.go             # 风格提取 + ID 解析工具
 │   ├── pow.go               # PoW (SHA3-512) 算法
 │   └── util.go              # 代理解析等工具
-├── cmd/sora2api/
-│   └── main.go              # 交互式 CLI 工具
+├── cmd/sora2api/            # TUI 交互式工具
+│   ├── main.go              # 入口
+│   ├── app.go               # 顶层模型 + 页面切换
+│   ├── messages.go          # 消息类型定义
+│   ├── styles.go            # 样式常量
+│   ├── page_setup.go        # Token/代理配置页
+│   ├── page_menu.go         # 功能菜单页
+│   ├── page_param.go        # 动态参数表单页
+│   ├── page_task.go         # 任务执行页
+│   └── page_result.go       # 结果展示页
 ├── go.mod
 └── README.md
 ```
