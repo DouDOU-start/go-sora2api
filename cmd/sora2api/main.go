@@ -41,8 +41,9 @@ func main() {
 	fmt.Println("  3) 文生视频")
 	fmt.Println("  4) 图生视频")
 	fmt.Println("  5) Remix 视频")
-	fmt.Println("  6) 获取去水印链接")
-	fmt.Print("请输入 (1-6) [默认 1]: ")
+	fmt.Println("  6) 提示词优化")
+	fmt.Println("  7) 获取去水印链接")
+	fmt.Print("请输入 (1-7) [默认 1]: ")
 	genChoice := readLine(reader)
 	if genChoice == "" {
 		genChoice = "1"
@@ -80,6 +81,8 @@ func main() {
 	case "5":
 		remixVideo(reader, c, accessToken)
 	case "6":
+		enhancePrompt(reader, c, accessToken)
+	case "7":
 		getWatermarkFreeURL(reader, c, accessToken)
 	default:
 		fmt.Println("[错误] 无效的选择")
@@ -403,6 +406,48 @@ func remixVideo(reader *bufio.Reader, c *sora.Client, accessToken string) {
 	}
 
 	fmt.Printf("\n[完成] 视频下载链接:\n  %s\n", downloadURL)
+}
+
+func enhancePrompt(reader *bufio.Reader, c *sora.Client, accessToken string) {
+	fmt.Print("\n请输入要优化的提示词: ")
+	prompt := readLine(reader)
+	if prompt == "" {
+		fmt.Println("[错误] 提示词不能为空!")
+		return
+	}
+
+	fmt.Println("\n请选择扩展程度:")
+	fmt.Println("  1) 中等 (medium)")
+	fmt.Println("  2) 详细 (long)")
+	fmt.Print("请输入 (1/2) [默认 1]: ")
+	levelChoice := readLine(reader)
+	expansionLevel := "medium"
+	if levelChoice == "2" {
+		expansionLevel = "long"
+	}
+
+	fmt.Println("\n请选择目标时长:")
+	fmt.Println("  1) 10 秒")
+	fmt.Println("  2) 15 秒")
+	fmt.Println("  3) 20 秒")
+	fmt.Print("请输入 (1/2/3) [默认 1]: ")
+	durChoice := readLine(reader)
+	durationSec := 10
+	switch durChoice {
+	case "2":
+		durationSec = 15
+	case "3":
+		durationSec = 20
+	}
+
+	fmt.Println("\n[步骤] 正在优化提示词...")
+	enhanced, err := c.EnhancePrompt(accessToken, prompt, expansionLevel, durationSec)
+	if err != nil {
+		fmt.Printf("[错误] 提示词优化失败: %v\n", err)
+		return
+	}
+
+	fmt.Printf("\n[完成] 优化后的提示词:\n  %s\n", enhanced)
 }
 
 func getWatermarkFreeURL(reader *bufio.Reader, c *sora.Client, _ string) {
