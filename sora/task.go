@@ -227,7 +227,7 @@ func (c *Client) RemixVideo(accessToken, sentinelToken, remixTargetID, prompt, o
 
 // EnhancePrompt 使用 Sora 的提示词优化 API 增强提示词
 // expansionLevel: "medium" 或 "long"
-// durationSec: 10、15 或 20
+// durationSec: 5、10、15 或 25
 func (c *Client) EnhancePrompt(accessToken, prompt, expansionLevel string, durationSec int) (string, error) {
 	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
 

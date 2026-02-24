@@ -235,6 +235,133 @@ func (c *Client) GetDownloadURL(accessToken, taskID string) (string, error) {
 	return "", fmt.Errorf("在最近草稿中未找到任务 %s", taskID)
 }
 
+// ImageTaskResult 图片任务单次查询结果
+type ImageTaskResult struct {
+	Progress Progress
+	Done     bool
+	ImageURL string
+	Err      error
+}
+
+// VideoTaskResult 视频任务单次查询结果
+type VideoTaskResult struct {
+	Progress Progress
+	Done     bool
+	Err      error
+}
+
+// QueryImageTaskOnce 单次查询图片任务状态（非阻塞，供 TUI 使用）
+func (c *Client) QueryImageTaskOnce(accessToken, taskID string, startTime time.Time) ImageTaskResult {
+	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
+	headers := map[string]string{
+		"Authorization": "Bearer " + accessToken,
+		"User-Agent":    userAgent,
+	}
+
+	elapsed := time.Since(startTime)
+
+	body, err := c.doGet(soraBaseURL+"/v2/recent_tasks?limit=20", headers)
+	if err != nil {
+		return ImageTaskResult{Err: fmt.Errorf("查询失败: %w", err)}
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return ImageTaskResult{Err: fmt.Errorf("解析失败: %w", err)}
+	}
+
+	taskResponses, _ := result["task_responses"].([]interface{})
+	for _, taskRaw := range taskResponses {
+		task, ok := taskRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		id, _ := task["id"].(string)
+		if id != taskID {
+			continue
+		}
+
+		status, _ := task["status"].(string)
+		progressPct := parseProgressPct(task)
+		progress := Progress{Percent: progressPct, Status: status, Elapsed: int(elapsed.Seconds())}
+
+		if status == "failed" || status == "error" {
+			reason, _ := task["failure_reason"].(string)
+			return ImageTaskResult{Progress: progress, Done: true, Err: fmt.Errorf("任务失败: %s", reason)}
+		}
+
+		if status == "succeeded" {
+			generations, _ := task["generations"].([]interface{})
+			for _, genRaw := range generations {
+				gen, ok := genRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				url, _ := gen["url"].(string)
+				if url != "" {
+					return ImageTaskResult{Progress: progress, Done: true, ImageURL: url}
+				}
+			}
+			return ImageTaskResult{Progress: progress, Done: true, Err: fmt.Errorf("任务成功但未找到图片 URL")}
+		}
+
+		return ImageTaskResult{Progress: progress}
+	}
+
+	return ImageTaskResult{Progress: Progress{Status: "waiting", Elapsed: int(elapsed.Seconds())}}
+}
+
+// QueryVideoTaskOnce 单次查询视频任务状态（非阻塞，供 TUI 使用）
+// maxProgress 应传入之前的最大进度值，返回的结果中会包含更新后的进度
+func (c *Client) QueryVideoTaskOnce(accessToken, taskID string, startTime time.Time, maxProgress int) VideoTaskResult {
+	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
+	headers := map[string]string{
+		"Authorization": "Bearer " + accessToken,
+		"User-Agent":    userAgent,
+	}
+
+	elapsed := time.Since(startTime)
+
+	body, err := c.doGet(soraBaseURL+"/nf/pending/v2", headers)
+	if err != nil {
+		return VideoTaskResult{Err: fmt.Errorf("查询失败: %w", err)}
+	}
+
+	var tasks []map[string]interface{}
+	if err := json.Unmarshal(body, &tasks); err != nil {
+		return VideoTaskResult{Err: fmt.Errorf("解析失败: %w", err)}
+	}
+
+	for _, task := range tasks {
+		id, _ := task["id"].(string)
+		if id != taskID {
+			continue
+		}
+
+		progressPct := parseProgressPct(task)
+		status, _ := task["status"].(string)
+
+		if progressPct > maxProgress {
+			maxProgress = progressPct
+		}
+
+		progress := Progress{Percent: maxProgress, Status: status, Elapsed: int(elapsed.Seconds())}
+
+		if status == "failed" || status == "error" {
+			reason, _ := task["failure_reason"].(string)
+			return VideoTaskResult{Progress: progress, Done: true, Err: fmt.Errorf("任务失败: %s", reason)}
+		}
+
+		return VideoTaskResult{Progress: progress}
+	}
+
+	// 任务不在列表中，可能已完成
+	return VideoTaskResult{
+		Progress: Progress{Percent: maxProgress, Status: "not_found", Elapsed: int(elapsed.Seconds())},
+		Done:     true,
+	}
+}
+
 // parseProgressPct 从任务响应中解析进度百分比
 func parseProgressPct(task map[string]interface{}) int {
 	if p, ok := task["progress_pct"].(float64); ok {
