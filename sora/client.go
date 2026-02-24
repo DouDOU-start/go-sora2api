@@ -1,11 +1,11 @@
 package sora
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strings"
-	"time"
 
 	http "github.com/bogdanfinn/fhttp"
 	tls_client "github.com/bogdanfinn/tls-client"
@@ -127,6 +127,34 @@ func (c *Client) doGet(url string, headers map[string]string) ([]byte, error) {
 	return buf, nil
 }
 
+func (c *Client) doPostMultipart(url string, headers map[string]string, body *bytes.Buffer, contentType string) (map[string]interface{}, error) {
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	req.Header.Set("Content-Type", contentType)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析响应失败 (HTTP %d): %w", resp.StatusCode, err)
+	}
+
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		return result, fmt.Errorf("HTTP %d: %v", resp.StatusCode, result)
+	}
+
+	return result, nil
+}
+
 // GenerateSentinelToken 获取 sentinel token（含 PoW 计算）
 func (c *Client) GenerateSentinelToken(accessToken string) (string, error) {
 	reqID := generateUUID()
@@ -154,321 +182,4 @@ func (c *Client) GenerateSentinelToken(accessToken string) (string, error) {
 	}
 
 	return buildSentinelToken(sentinelFlow, reqID, powToken, resp, userAgent), nil
-}
-
-// CreateVideoTask 创建视频生成任务
-func (c *Client) CreateVideoTask(accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size string) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-
-	headers := map[string]string{
-		"Authorization":         "Bearer " + accessToken,
-		"openai-sentinel-token": sentinelToken,
-		"Content-Type":          "application/json",
-		"User-Agent":            userAgent,
-		"Origin":                "https://sora.chatgpt.com",
-		"Referer":               "https://sora.chatgpt.com/",
-	}
-
-	payload := map[string]interface{}{
-		"kind":          "video",
-		"prompt":        prompt,
-		"orientation":   orientation,
-		"size":          size,
-		"n_frames":      nFrames,
-		"model":         model,
-		"inpaint_items": []interface{}{},
-		"style_id":      nil,
-	}
-
-	resp, err := c.doPost(soraBaseURL+"/nf/create", headers, payload)
-	if err != nil {
-		return "", fmt.Errorf("创建任务失败: %w", err)
-	}
-
-	taskID, ok := resp["id"].(string)
-	if !ok || taskID == "" {
-		return "", fmt.Errorf("响应中无 task_id: %v", resp)
-	}
-
-	return taskID, nil
-}
-
-// CreateImageTask 创建图片生成任务
-func (c *Client) CreateImageTask(accessToken, sentinelToken, prompt string, width, height int) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-
-	headers := map[string]string{
-		"Authorization":         "Bearer " + accessToken,
-		"openai-sentinel-token": sentinelToken,
-		"Content-Type":          "application/json",
-		"User-Agent":            userAgent,
-		"Origin":                "https://sora.chatgpt.com",
-		"Referer":               "https://sora.chatgpt.com/",
-	}
-
-	payload := map[string]interface{}{
-		"type":          "image_gen",
-		"operation":     "simple_compose",
-		"prompt":        prompt,
-		"width":         width,
-		"height":        height,
-		"n_variants":    1,
-		"n_frames":      1,
-		"inpaint_items": []interface{}{},
-	}
-
-	resp, err := c.doPost(soraBaseURL+"/video_gen", headers, payload)
-	if err != nil {
-		return "", fmt.Errorf("创建图片任务失败: %w", err)
-	}
-
-	taskID, ok := resp["id"].(string)
-	if !ok || taskID == "" {
-		return "", fmt.Errorf("响应中无 task_id: %v", resp)
-	}
-
-	return taskID, nil
-}
-
-// PollImageTask 轮询图片任务进度，返回图片 URL
-// onProgress 可为 nil，非 nil 时在每次轮询后回调进度
-func (c *Client) PollImageTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    userAgent,
-	}
-
-	startTime := time.Now()
-	time.Sleep(2 * time.Second)
-
-	for {
-		elapsed := time.Since(startTime)
-		if elapsed > pollTimeout {
-			return "", fmt.Errorf("轮询超时 (%v)", pollTimeout)
-		}
-
-		body, err := c.doGet(soraBaseURL+"/v2/recent_tasks?limit=20", headers)
-		if err != nil {
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		var result map[string]interface{}
-		if err := json.Unmarshal(body, &result); err != nil {
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		taskResponses, _ := result["task_responses"].([]interface{})
-		for _, taskRaw := range taskResponses {
-			task, ok := taskRaw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			id, _ := task["id"].(string)
-			if id != taskID {
-				continue
-			}
-
-			status, _ := task["status"].(string)
-			progressPct := 0
-			if p, ok := task["progress_pct"].(float64); ok {
-				if p > 0 && p <= 1 {
-					progressPct = int(p * 100)
-				} else {
-					progressPct = int(p)
-				}
-			}
-
-			if onProgress != nil {
-				onProgress(Progress{
-					Percent: progressPct,
-					Status:  status,
-					Elapsed: int(elapsed.Seconds()),
-				})
-			}
-
-			if status == "failed" || status == "error" {
-				reason, _ := task["failure_reason"].(string)
-				return "", fmt.Errorf("任务失败: %s", reason)
-			}
-
-			if status == "succeeded" {
-				generations, _ := task["generations"].([]interface{})
-				for _, genRaw := range generations {
-					gen, ok := genRaw.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					url, _ := gen["url"].(string)
-					if url != "" {
-						return url, nil
-					}
-				}
-				return "", fmt.Errorf("任务成功但未找到图片 URL")
-			}
-
-			break
-		}
-
-		time.Sleep(pollInterval)
-	}
-}
-
-// PollVideoTask 轮询视频任务进度
-// onProgress 可为 nil，非 nil 时在每次轮询后回调进度
-func (c *Client) PollVideoTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) error {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    userAgent,
-	}
-
-	startTime := time.Now()
-	maxProgress := 0
-	everFound := false
-	notFoundCount := 0
-
-	time.Sleep(2 * time.Second)
-
-	for {
-		elapsed := time.Since(startTime)
-		if elapsed > pollTimeout {
-			return fmt.Errorf("轮询超时 (%v)", pollTimeout)
-		}
-
-		body, err := c.doGet(soraBaseURL+"/nf/pending/v2", headers)
-		if err != nil {
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		var tasks []map[string]interface{}
-		if err := json.Unmarshal(body, &tasks); err != nil {
-			time.Sleep(pollInterval)
-			continue
-		}
-
-		found := false
-		for _, task := range tasks {
-			id, _ := task["id"].(string)
-			if id == taskID {
-				found = true
-				everFound = true
-				notFoundCount = 0
-
-				progressPct := 0
-				if p, ok := task["progress_pct"].(float64); ok {
-					if p > 0 && p <= 1 {
-						progressPct = int(p * 100)
-					} else {
-						progressPct = int(p)
-					}
-				}
-
-				status, _ := task["status"].(string)
-
-				if progressPct > maxProgress {
-					maxProgress = progressPct
-				}
-
-				if onProgress != nil {
-					onProgress(Progress{
-						Percent: maxProgress,
-						Status:  status,
-						Elapsed: int(elapsed.Seconds()),
-					})
-				}
-
-				if status == "failed" || status == "error" {
-					reason, _ := task["failure_reason"].(string)
-					return fmt.Errorf("任务失败: %s", reason)
-				}
-				break
-			}
-		}
-
-		if !found {
-			notFoundCount++
-			if everFound && notFoundCount >= 2 {
-				return nil
-			}
-			if !everFound && elapsed.Seconds() > 30 {
-				return nil
-			}
-		}
-
-		time.Sleep(pollInterval)
-	}
-}
-
-// GetDownloadURL 从 drafts 接口获取下载链接
-func (c *Client) GetDownloadURL(accessToken, taskID string) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    userAgent,
-	}
-
-	for attempt := 0; attempt < 3; attempt++ {
-		body, err := c.doGet(soraBaseURL+"/project_y/profile/drafts?limit=15", headers)
-		if err != nil {
-			if attempt < 2 {
-				time.Sleep(3 * time.Second)
-			}
-			continue
-		}
-
-		var result map[string]interface{}
-		if err := json.Unmarshal(body, &result); err != nil {
-			if attempt < 2 {
-				time.Sleep(3 * time.Second)
-			}
-			continue
-		}
-
-		items, _ := result["items"].([]interface{})
-		for _, itemRaw := range items {
-			item, ok := itemRaw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			tid, _ := item["task_id"].(string)
-			if tid != taskID {
-				continue
-			}
-
-			kind, _ := item["kind"].(string)
-			reasonStr, _ := item["reason_str"].(string)
-			markdownReason, _ := item["markdown_reason_str"].(string)
-
-			if kind == "sora_content_violation" || reasonStr != "" || markdownReason != "" {
-				reason := reasonStr
-				if reason == "" {
-					reason = markdownReason
-				}
-				if reason == "" {
-					reason = "内容违反使用政策"
-				}
-				return "", fmt.Errorf("内容违规: %s", reason)
-			}
-
-			downloadURL, _ := item["downloadable_url"].(string)
-			if downloadURL == "" {
-				downloadURL, _ = item["url"].(string)
-			}
-			if downloadURL != "" {
-				return downloadURL, nil
-			}
-		}
-
-		if attempt < 2 {
-			time.Sleep(3 * time.Second)
-		}
-	}
-
-	return "", fmt.Errorf("在最近草稿中未找到任务 %s", taskID)
 }

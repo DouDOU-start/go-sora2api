@@ -2,111 +2,138 @@
 
 Sora 视频/图片生成 Go SDK，通过 TLS 指纹模拟绕过 Cloudflare 验证。
 
+## 功能
+
+- 文生图 / 图生图
+- 文生视频 / 图生视频
+- 视频 Remix（基于已有视频再创作）
+- 10 种视频风格（anime、retro、comic 等）
+- 提示词优化（AI 自动扩展提示词）
+- 进度回调
+- 代理支持
+
 ## 安装
 
 ```bash
 go get github.com/DouDOU-start/go-sora2api/sora
 ```
 
-## 作为库使用
+## 快速开始
+
+### 文生图
 
 ```go
-package main
-
-import (
-	"fmt"
-	"time"
-
-	"github.com/DouDOU-start/go-sora2api/sora"
-)
-
-func main() {
-	// 创建客户端（传入代理地址，空字符串表示不使用代理）
-	c, err := sora.New("")
-	if err != nil {
-		panic(err)
-	}
-
-	accessToken := "your_access_token"
-
-	// 1. 获取 sentinel token
-	sentinelToken, err := c.GenerateSentinelToken(accessToken)
-	if err != nil {
-		panic(err)
-	}
-
-	// 2. 创建图片任务
-	taskID, err := c.CreateImageTask(accessToken, sentinelToken, "a cute cat running on grass", 360, 360)
-	if err != nil {
-		panic(err)
-	}
-
-	// 3. 轮询进度（回调可传 nil 忽略进度）
-	imageURL, err := c.PollImageTask(accessToken, taskID, 3*time.Second, 600*time.Second, func(p sora.Progress) {
-		fmt.Printf("\r进度: %d%% 状态: %s 耗时: %ds", p.Percent, p.Status, p.Elapsed)
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("\n图片链接:", imageURL)
-}
+c, _ := sora.New("")
+token, _ := c.GenerateSentinelToken(accessToken)
+taskID, _ := c.CreateImageTask(accessToken, token, "a cute cat", 360, 360)
+imageURL, _ := c.PollImageTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
 ```
 
-### 视频生成
+### 图生图
 
 ```go
-// 创建视频任务
-taskID, err := c.CreateVideoTask(accessToken, sentinelToken,
-	"a cute cat running on grass", // prompt
-	"landscape",                    // orientation: landscape / portrait
-	150,                            // nFrames: 150(5s) / 300(10s) / 450(15s) / 750(25s)
-	"sy_8",                         // model: sy_8(标准) / sy_ore(Pro)
-	"small",                        // size: small(标准) / large(高清, 仅Pro)
-)
+// 先上传图片
+mediaID, _ := c.UploadImage(accessToken, imageData, "input.png")
 
-// 轮询视频进度
-err = c.PollVideoTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
+// 基于图片生成新图片
+token, _ := c.GenerateSentinelToken(accessToken)
+taskID, _ := c.CreateImageTaskWithImage(accessToken, token, "make it more colorful", 360, 360, mediaID)
+imageURL, _ := c.PollImageTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
+```
 
-// 获取下载链接
-downloadURL, err := c.GetDownloadURL(accessToken, taskID)
+### 文生视频
+
+```go
+token, _ := c.GenerateSentinelToken(accessToken)
+taskID, _ := c.CreateVideoTask(accessToken, token, "a cat running", "landscape", 150, "sy_8", "small")
+_ = c.PollVideoTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
+url, _ := c.GetDownloadURL(accessToken, taskID)
+```
+
+### 图生视频
+
+```go
+mediaID, _ := c.UploadImage(accessToken, imageData, "input.png")
+
+token, _ := c.GenerateSentinelToken(accessToken)
+taskID, _ := c.CreateVideoTaskWithImage(accessToken, token, "animate this scene", "landscape", 150, "sy_8", "small", mediaID)
+_ = c.PollVideoTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
+url, _ := c.GetDownloadURL(accessToken, taskID)
+```
+
+### 带风格的视频
+
+```go
+// 方式一：通过参数指定风格
+taskID, _ := c.CreateVideoTaskWithOptions(accessToken, token, "a cat running", "landscape", 150, "sy_8", "small", "", "anime")
+
+// 方式二：从提示词中自动提取 {style}
+prompt, styleID := sora.ExtractStyle("a cat running {anime}")
+// prompt = "a cat running", styleID = "anime"
+```
+
+可选风格：`festive`, `kakalaka`, `news`, `selfie`, `handheld`, `golden`, `anime`, `retro`, `nostalgic`, `comic`
+
+### Remix 视频
+
+```go
+// 从分享链接提取视频 ID
+remixID := sora.ExtractRemixID("https://sora.chatgpt.com/p/s_690d100857248191b679e6de12db840e")
+
+token, _ := c.GenerateSentinelToken(accessToken)
+taskID, _ := c.RemixVideo(accessToken, token, remixID, "make it snowy", "landscape", 150, "")
+_ = c.PollVideoTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
+url, _ := c.GetDownloadURL(accessToken, taskID)
+```
+
+### 提示词优化
+
+```go
+enhanced, _ := c.EnhancePrompt(accessToken, "a cat", "medium", 10)
+// enhanced = "A playful orange tabby cat sits gracefully..."
+```
+
+### 进度回调
+
+```go
+c.PollImageTask(accessToken, taskID, 3*time.Second, 600*time.Second, func(p sora.Progress) {
+    fmt.Printf("\r进度: %d%% 状态: %s 耗时: %ds", p.Percent, p.Status, p.Elapsed)
+})
 ```
 
 ### 代理支持
 
 ```go
-// 支持多种代理格式
 c, _ := sora.New("http://user:pass@ip:port")
 c, _ := sora.New("socks5://user:pass@ip:port")
 
-// 也可以用 ParseProxy 解析简写格式
+// ParseProxy 解析简写格式
 proxy := sora.ParseProxy("ip:port:user:pass")
 c, _ := sora.New(proxy)
 ```
 
 ## API 参考
 
-### `sora.New(proxyURL string) (*Client, error)`
+| 方法 | 说明 |
+|------|------|
+| `New(proxyURL)` | 创建客户端 |
+| `GenerateSentinelToken(accessToken)` | 获取 sentinel token（含 PoW），创建任务前必须调用 |
+| `UploadImage(accessToken, imageData, filename)` | 上传图片，返回 mediaID |
+| `CreateImageTask(accessToken, sentinelToken, prompt, w, h)` | 文生图 |
+| `CreateImageTaskWithImage(..., mediaID)` | 图生图 |
+| `CreateVideoTask(accessToken, sentinelToken, prompt, orientation, nFrames, model, size)` | 文生视频 |
+| `CreateVideoTaskWithImage(..., mediaID)` | 图生视频 |
+| `CreateVideoTaskWithOptions(..., mediaID, styleID)` | 完整视频创建（含风格） |
+| `RemixVideo(accessToken, sentinelToken, remixTargetID, prompt, orientation, nFrames, styleID)` | Remix 视频 |
+| `EnhancePrompt(accessToken, prompt, expansionLevel, durationSec)` | 提示词优化 |
+| `PollImageTask(accessToken, taskID, interval, timeout, onProgress)` | 轮询图片任务 |
+| `PollVideoTask(accessToken, taskID, interval, timeout, onProgress)` | 轮询视频任务 |
+| `GetDownloadURL(accessToken, taskID)` | 获取视频下载链接 |
+| `ExtractStyle(prompt)` | 从提示词提取 `{style}` 风格 |
+| `ExtractRemixID(text)` | 从 URL 提取 Remix 视频 ID |
+| `ParseProxy(proxy)` | 解析代理字符串 |
 
-创建客户端。`proxyURL` 为空则不使用代理。
-
-### `Client.GenerateSentinelToken(accessToken string) (string, error)`
-
-获取 sentinel token（含 PoW 计算），创建任务前必须调用。
-
-### `Client.CreateImageTask(accessToken, sentinelToken, prompt string, width, height int) (string, error)`
-
-创建图片生成任务，返回 taskID。
-
-| 尺寸选项 | width | height |
-|----------|-------|--------|
-| 正方形 | 360 | 360 |
-| 横向 | 540 | 360 |
-| 纵向 | 360 | 540 |
-
-### `Client.CreateVideoTask(accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size string) (string, error)`
-
-创建视频生成任务，返回 taskID。
+### 视频参数
 
 | 参数 | 可选值 |
 |------|--------|
@@ -115,25 +142,17 @@ c, _ := sora.New(proxy)
 | model | `sy_8`(标准) / `sy_ore`(Pro) |
 | size | `small`(标准) / `large`(高清, 仅Pro) |
 
-### `Client.PollImageTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) (string, error)`
+### 图片参数
 
-轮询图片任务，完成后返回图片 URL。`onProgress` 可为 `nil`。
-
-### `Client.PollVideoTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) error`
-
-轮询视频任务进度。`onProgress` 可为 `nil`。
-
-### `Client.GetDownloadURL(accessToken, taskID string) (string, error)`
-
-获取视频下载链接（视频轮询完成后调用）。
-
-### `sora.ParseProxy(proxy string) string`
-
-解析代理字符串，支持 `ip:port:user:pass`、`ip:port`、标准 URL 等格式。
+| 尺寸 | width | height |
+|------|-------|--------|
+| 正方形 | 360 | 360 |
+| 横向 | 540 | 360 |
+| 纵向 | 360 | 540 |
 
 ## CLI 工具
 
-也提供交互式命令行工具：
+提供交互式命令行工具，支持全部功能：
 
 ```bash
 go install github.com/DouDOU-start/go-sora2api/cmd@latest
@@ -151,11 +170,11 @@ go build -o sora2api ./cmd/
 ```
 go-sora2api/
 ├── sora/              # 公开 SDK 包
-│   ├── client.go      # 客户端 + API 方法
+│   ├── client.go      # 客户端 + 全部 API 方法
 │   ├── pow.go         # PoW (SHA3-512) 算法
 │   └── util.go        # 代理解析等工具
 ├── cmd/
-│   └── main.go        # CLI 工具入口
+│   └── main.go        # 交互式 CLI 工具
 ├── go.mod
 └── README.md
 ```
