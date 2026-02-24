@@ -22,70 +22,81 @@ func main() {
 
 	reader := bufio.NewReader(os.Stdin)
 
-	// 输入 access_token
-	fmt.Print("\n请输入 access_token: ")
-	accessToken := readLine(reader)
-	if accessToken == "" {
-		fmt.Println("[错误] access_token 不能为空!")
-		return
-	}
+	var accessToken, proxyURL string
+	var c *sora.Client
 
-	// 输入代理
-	fmt.Print("请输入代理 (留空不使用代理): ")
-	proxyURL := sora.ParseProxy(readLine(reader))
+	for {
+		// 如果还没配置，先输入凭证
+		if c == nil {
+			fmt.Print("\n请输入 access_token: ")
+			accessToken = readLine(reader)
+			if accessToken == "" {
+				fmt.Println("[错误] access_token 不能为空!")
+				continue
+			}
 
-	// 选择生成类型
-	fmt.Println("\n请选择功能:")
-	fmt.Println("  1) 文生图")
-	fmt.Println("  2) 图生图")
-	fmt.Println("  3) 文生视频")
-	fmt.Println("  4) 图生视频")
-	fmt.Println("  5) Remix 视频")
-	fmt.Println("  6) 提示词优化")
-	fmt.Println("  7) 获取去水印链接")
-	fmt.Print("请输入 (1-7) [默认 1]: ")
-	genChoice := readLine(reader)
-	if genChoice == "" {
-		genChoice = "1"
-	}
+			fmt.Print("请输入代理 (留空不使用代理): ")
+			proxyURL = sora.ParseProxy(readLine(reader))
 
-	// 创建客户端
-	c, err := sora.New(proxyURL)
-	if err != nil {
-		fmt.Printf("[错误] 创建客户端失败: %v\n", err)
-		return
-	}
+			var err error
+			c, err = sora.New(proxyURL)
+			if err != nil {
+				fmt.Printf("[错误] 创建客户端失败: %v\n", err)
+				c = nil
+				continue
+			}
 
-	// 显示配置
-	tokenDisplay := accessToken
-	if len(accessToken) > 30 {
-		tokenDisplay = accessToken[:20] + "..." + accessToken[len(accessToken)-10:]
-	}
-	fmt.Printf("\n--- 配置信息 ---\n")
-	fmt.Printf("Token: %s\n", tokenDisplay)
-	if proxyURL != "" {
-		fmt.Printf("代理: %s\n", proxyURL)
-	} else {
-		fmt.Printf("代理: 无\n")
-	}
+			tokenDisplay := accessToken
+			if len(accessToken) > 30 {
+				tokenDisplay = accessToken[:20] + "..." + accessToken[len(accessToken)-10:]
+			}
+			fmt.Printf("\n--- 配置信息 ---\n")
+			fmt.Printf("Token: %s\n", tokenDisplay)
+			if proxyURL != "" {
+				fmt.Printf("代理: %s\n", proxyURL)
+			} else {
+				fmt.Printf("代理: 无\n")
+			}
+		}
 
-	switch genChoice {
-	case "1":
-		generateImage(reader, c, accessToken, "")
-	case "2":
-		generateImageFromImage(reader, c, accessToken)
-	case "3":
-		generateVideo(reader, c, accessToken, "")
-	case "4":
-		generateVideoFromImage(reader, c, accessToken)
-	case "5":
-		remixVideo(reader, c, accessToken)
-	case "6":
-		enhancePrompt(reader, c, accessToken)
-	case "7":
-		getWatermarkFreeURL(reader, c, accessToken)
-	default:
-		fmt.Println("[错误] 无效的选择")
+		// 功能菜单
+		fmt.Println("\n请选择功能:")
+		fmt.Println("  1) 文生图")
+		fmt.Println("  2) 图生图")
+		fmt.Println("  3) 文生视频")
+		fmt.Println("  4) 图生视频")
+		fmt.Println("  5) Remix 视频")
+		fmt.Println("  6) 提示词优化")
+		fmt.Println("  7) 获取去水印链接")
+		fmt.Println("  8) 重新设置 Token/代理")
+		fmt.Println("  0) 退出")
+		fmt.Print("请输入: ")
+		choice := readLine(reader)
+
+		switch choice {
+		case "1":
+			generateImage(reader, c, accessToken, "")
+		case "2":
+			generateImageFromImage(reader, c, accessToken)
+		case "3":
+			generateVideo(reader, c, accessToken, "")
+		case "4":
+			generateVideoFromImage(reader, c, accessToken)
+		case "5":
+			remixVideo(reader, c, accessToken)
+		case "6":
+			enhancePrompt(reader, c, accessToken)
+		case "7":
+			getWatermarkFreeURL(reader, c, accessToken)
+		case "8":
+			c = nil // 重置，下次循环重新输入
+			fmt.Println("\n已重置，请重新输入配置。")
+		case "0", "q", "quit", "exit":
+			fmt.Println("\n再见!")
+			return
+		default:
+			fmt.Println("[错误] 无效的选择")
+		}
 	}
 }
 
