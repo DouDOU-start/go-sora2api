@@ -30,6 +30,7 @@ const (
 	funcRemixVideo
 	funcEnhancePrompt
 	funcWatermarkFree
+	funcCreditBalance
 )
 
 // appModel 顶层模型
@@ -66,7 +67,6 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// 传播到子模型
 		m.menu.width = msg.Width
 		m.task.width = msg.Width
 		return m, nil
@@ -86,11 +86,18 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case pageMenu:
 			m.menu = newMenuModel()
 			m.menu.width = m.width
-			return m, nil
+			return m, tea.Batch(m.menu.Init(), m.fetchAccountInfo())
 		}
 		return m, nil
 
 	case funcSelectedMsg:
+		// 无需参数的功能直接进入任务页
+		if msg.funcType == funcCreditBalance {
+			m.currentPage = pageTask
+			m.task = newTaskModel(m.client, m.accessToken, msg.funcType, map[string]string{})
+			m.task.width = m.width
+			return m, m.task.Init()
+		}
 		m.currentPage = pageParam
 		m.param = newParamModel(msg.funcType)
 		return m, m.param.Init()
@@ -118,7 +125,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentPage = pageMenu
 			m.menu = newMenuModel()
 			m.menu.width = m.width
-			return m, nil
+			return m, tea.Batch(m.menu.Init(), m.fetchAccountInfo())
 		}
 
 	case pageMenu:
@@ -141,7 +148,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentPage = pageMenu
 			m.menu = newMenuModel()
 			m.menu.width = m.width
-			return m, nil
+			return m, tea.Batch(m.menu.Init(), m.fetchAccountInfo())
 		}
 
 	case pageTask:
@@ -169,28 +176,70 @@ func (m appModel) View() string {
 
 	switch m.currentPage {
 	case pageSetup:
-		content = m.setup.View()
+		content = m.renderSetupPage()
 	case pageMenu:
-		content = m.menuViewWithStatus()
+		content = m.renderMenuPage()
 	case pageParam:
-		content = m.param.View()
+		content = m.renderParamPage()
 	case pageTask:
-		content = m.task.View()
+		content = m.renderTaskPage()
 	case pageResult:
-		content = m.result.View()
+		content = m.renderResultPage()
 	}
 
 	return content
 }
 
-func (m appModel) menuViewWithStatus() string {
+// fetchAccountInfo 异步获取账号配额和订阅信息
+func (m appModel) fetchAccountInfo() tea.Cmd {
+	return func() tea.Msg {
+		var balance *sora.CreditBalance
+		var sub *sora.SubscriptionInfo
+
+		// 获取配额
+		b, err := m.client.GetCreditBalance(m.accessToken)
+		if err == nil {
+			balance = &b
+		}
+
+		// 获取订阅信息
+		s, err2 := m.client.GetSubscriptionInfo(m.accessToken)
+		if err2 == nil {
+			sub = &s
+		}
+
+		// 只要有一个成功就不算错误
+		var retErr error
+		if err != nil && err2 != nil {
+			retErr = err
+		}
+
+		return accountInfoMsg{balance: balance, sub: sub, err: retErr}
+	}
+}
+
+// ─── 页面渲染 ───
+
+func (m appModel) renderSetupPage() string {
+	return m.wrapPage("", m.setup.View())
+}
+
+func (m appModel) renderMenuPage() string {
 	var b strings.Builder
 
-	header := titleStyle.Render("Sora 视频/图片生成工具")
-	b.WriteString(header)
-	b.WriteString("\n")
+	// 标题
+	b.WriteString(titleStyle.Render("  Sora 视频/图片生成工具"))
+	b.WriteString("\n\n")
 
-	// 状态栏
+	// 账号信息卡片
+	accountContent := m.menu.renderAccountCard()
+	if accountContent != "" {
+		card := accountCardStyle.Render(accountContent)
+		b.WriteString(card)
+		b.WriteString("\n\n")
+	}
+
+	// 连接信息
 	tokenDisplay := m.accessToken
 	if len(tokenDisplay) > 30 {
 		tokenDisplay = tokenDisplay[:15] + "..." + tokenDisplay[len(tokenDisplay)-8:]
@@ -199,12 +248,39 @@ func (m appModel) menuViewWithStatus() string {
 	if m.proxyURL != "" {
 		proxyDisplay = m.proxyURL
 	}
-	status := lipgloss.NewStyle().Foreground(colorMuted).Render(
-		fmt.Sprintf("Token: %s  |  代理: %s", tokenDisplay, proxyDisplay))
-	b.WriteString(status)
+	connInfo := menuDescStyle.Render(fmt.Sprintf("  Token: %s  |  代理: %s", tokenDisplay, proxyDisplay))
+	b.WriteString(connInfo)
 	b.WriteString("\n")
 
+	// 菜单
 	b.WriteString(m.menu.View())
 
 	return b.String()
+}
+
+func (m appModel) renderParamPage() string {
+	return m.wrapPage("", m.param.View())
+}
+
+func (m appModel) renderTaskPage() string {
+	return m.wrapPage("", m.task.View())
+}
+
+func (m appModel) renderResultPage() string {
+	return m.wrapPage("", m.result.View())
+}
+
+func (m appModel) wrapPage(_ string, content string) string {
+	// 计算可用宽度
+	maxWidth := m.width
+	if maxWidth <= 0 {
+		maxWidth = 80
+	}
+	if maxWidth > 100 {
+		maxWidth = 100
+	}
+
+	return lipgloss.NewStyle().
+		MaxWidth(maxWidth).
+		Render(content)
 }

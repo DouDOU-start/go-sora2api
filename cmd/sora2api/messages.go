@@ -28,3 +28,10 @@ type taskCompleteMsg struct {
 
 // 轮询计时器到期消息
 type tickPollMsg struct{}
+
+// 账号信息加载完成消息
+type accountInfoMsg struct {
+	balance *sora.CreditBalance
+	sub     *sora.SubscriptionInfo
+	err     error
+}

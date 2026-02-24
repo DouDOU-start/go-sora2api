@@ -95,41 +95,41 @@ func (m setupModel) View() string {
 	var b strings.Builder
 
 	b.WriteString("\n")
-	b.WriteString(titleStyle.Render("Sora 视频/图片生成工具"))
+	b.WriteString(titleStyle.Render("  Sora 视频/图片生成工具"))
 	b.WriteString("\n\n")
 
+	// 表单内容
+	var form strings.Builder
+
 	// Token 输入
-	tokenLabel := "  Access Token"
 	if m.focusIndex == 0 {
-		tokenLabel = labelStyle.Foreground(colorPrimary).Render("▸ Access Token")
+		form.WriteString(labelStyle.Foreground(colorPrimary).Render("▸ Access Token"))
 	} else {
-		tokenLabel = labelStyle.Render("  Access Token")
+		form.WriteString(labelStyle.Render("  Access Token"))
 	}
-	b.WriteString(tokenLabel)
-	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  %s\n", m.tokenInput.View()))
+	form.WriteString("\n")
+	form.WriteString(fmt.Sprintf("  %s\n", m.tokenInput.View()))
 
 	// 代理输入
-	proxyLabel := "  代理地址"
 	if m.focusIndex == 1 {
-		proxyLabel = labelStyle.Foreground(colorPrimary).Render("▸ 代理地址 (可选)")
+		form.WriteString(labelStyle.Foreground(colorPrimary).Render("\n▸ 代理地址 (可选)"))
 	} else {
-		proxyLabel = labelStyle.Render("  代理地址 (可选)")
+		form.WriteString(labelStyle.Render("\n  代理地址 (可选)"))
 	}
+	form.WriteString("\n")
+	form.WriteString(fmt.Sprintf("  %s", m.proxyInput.View()))
+
+	b.WriteString(boxStyle.Render(form.String()))
 	b.WriteString("\n")
-	b.WriteString(proxyLabel)
-	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  %s\n", m.proxyInput.View()))
 
 	// 错误提示
 	if m.err != "" {
 		b.WriteString("\n")
 		b.WriteString(errorStyle.Render("  ✗ " + m.err))
-		b.WriteString("\n")
 	}
 
 	// 帮助
-	b.WriteString("\n")
+	b.WriteString("\n\n")
 	b.WriteString(helpStyle.Render("  Tab 切换  |  Enter 确认  |  Ctrl+C 退出"))
 
 	return b.String()

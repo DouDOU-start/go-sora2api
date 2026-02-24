@@ -225,9 +225,11 @@ func (m paramModel) View() string {
 	var b strings.Builder
 
 	title := funcName(m.funcType)
-	b.WriteString(titleStyle.Render(title + " - 参数设置"))
+	b.WriteString(titleStyle.Render("  " + title + " - 参数设置"))
 	b.WriteString("\n\n")
 
+	// 表单内容放入卡片
+	var form strings.Builder
 	for i, f := range m.fields {
 		isFocused := i == m.focus
 		indicator := "  "
@@ -241,33 +243,35 @@ func (m paramModel) View() string {
 		} else {
 			lbl = labelStyle.Render(indicator + lbl)
 		}
-		b.WriteString(lbl)
-		b.WriteString("\n")
+		form.WriteString(lbl)
+		form.WriteString("\n")
 
 		switch f.kind {
 		case "text":
-			b.WriteString(fmt.Sprintf("    %s\n", f.input.View()))
+			form.WriteString(fmt.Sprintf("    %s\n", f.input.View()))
 		case "select":
-			b.WriteString("    ")
+			form.WriteString("    ")
 			for j, label := range f.optionLabels {
 				if j == f.selected {
 					if isFocused {
-						b.WriteString(menuSelectedStyle.Render("● " + label))
+						form.WriteString(menuSelectedStyle.Render("● " + label))
 					} else {
-						b.WriteString(successStyle.Render("● " + label))
+						form.WriteString(successStyle.Render("● " + label))
 					}
 				} else {
-					b.WriteString(menuDescStyle.Render("○ " + label))
+					form.WriteString(menuDescStyle.Render("○ " + label))
 				}
 				if j < len(f.optionLabels)-1 {
-					b.WriteString("  ")
+					form.WriteString("  ")
 				}
 			}
-			b.WriteString("\n")
+			form.WriteString("\n")
 		}
 	}
 
-	b.WriteString("\n")
+	b.WriteString(boxStyle.Render(form.String()))
+
+	b.WriteString("\n\n")
 	help := "  ↑/↓ 切换字段  |  ←/→ 选择选项  |  Enter 下一项/提交  |  Ctrl+S 直接提交  |  Esc 返回"
 	b.WriteString(helpStyle.Render(help))
 
@@ -290,6 +294,8 @@ func funcName(ft funcType) string {
 		return "提示词优化"
 	case funcWatermarkFree:
 		return "去水印链接"
+	case funcCreditBalance:
+		return "查询可用次数"
 	}
 	return ""
 }

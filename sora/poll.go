@@ -362,6 +362,96 @@ func (c *Client) QueryVideoTaskOnce(accessToken, taskID string, startTime time.T
 	}
 }
 
+// CreditBalance 配额信息
+type CreditBalance struct {
+	RemainingCount      int  // 剩余可用次数
+	RateLimitReached    bool // 是否触发速率限制
+	AccessResetsInSec   int  // 访问权限重置时间（秒）
+}
+
+// GetCreditBalance 获取当前账号的可用次数和配额信息
+func (c *Client) GetCreditBalance(accessToken string) (CreditBalance, error) {
+	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
+	headers := map[string]string{
+		"Authorization": "Bearer " + accessToken,
+		"Accept":        "application/json",
+		"User-Agent":    userAgent,
+	}
+
+	body, err := c.doGet(soraBaseURL+"/nf/check", headers)
+	if err != nil {
+		return CreditBalance{}, fmt.Errorf("获取配额信息失败: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return CreditBalance{}, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	rateLimitInfo, _ := result["rate_limit_and_credit_balance"].(map[string]interface{})
+	if rateLimitInfo == nil {
+		return CreditBalance{}, fmt.Errorf("响应中无配额信息: %v", result)
+	}
+
+	remaining, _ := rateLimitInfo["estimated_num_videos_remaining"].(float64)
+	rateLimitReached, _ := rateLimitInfo["rate_limit_reached"].(bool)
+	accessResets, _ := rateLimitInfo["access_resets_in_seconds"].(float64)
+
+	return CreditBalance{
+		RemainingCount:    int(remaining),
+		RateLimitReached:  rateLimitReached,
+		AccessResetsInSec: int(accessResets),
+	}, nil
+}
+
+// SubscriptionInfo 订阅信息
+type SubscriptionInfo struct {
+	PlanID    string // 套餐类型，例如 "chatgptplusplan"
+	PlanTitle string // 套餐名称，例如 "ChatGPT Plus"
+	EndTs     int64  // 订阅到期时间戳（秒）
+}
+
+// GetSubscriptionInfo 获取当前账号的订阅信息（套餐类型、到期时间）
+func (c *Client) GetSubscriptionInfo(accessToken string) (SubscriptionInfo, error) {
+	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
+	headers := map[string]string{
+		"Authorization": "Bearer " + accessToken,
+		"Accept":        "application/json",
+		"User-Agent":    userAgent,
+	}
+
+	body, err := c.doGet(soraBaseURL+"/billing/subscriptions", headers)
+	if err != nil {
+		return SubscriptionInfo{}, fmt.Errorf("获取订阅信息失败: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return SubscriptionInfo{}, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	data, _ := result["data"].([]interface{})
+	if len(data) == 0 {
+		return SubscriptionInfo{}, fmt.Errorf("未找到订阅信息")
+	}
+
+	sub, _ := data[0].(map[string]interface{})
+	if sub == nil {
+		return SubscriptionInfo{}, fmt.Errorf("订阅数据格式异常")
+	}
+
+	plan, _ := sub["plan"].(map[string]interface{})
+	planID, _ := plan["id"].(string)
+	planTitle, _ := plan["title"].(string)
+	endTs, _ := sub["end_ts"].(float64)
+
+	return SubscriptionInfo{
+		PlanID:    planID,
+		PlanTitle: planTitle,
+		EndTs:     int64(endTs),
+	}, nil
+}
+
 // parseProgressPct 从任务响应中解析进度百分比
 func parseProgressPct(task map[string]interface{}) int {
 	if p, ok := task["progress_pct"].(float64); ok {

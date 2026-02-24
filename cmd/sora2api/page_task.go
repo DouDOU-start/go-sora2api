@@ -131,44 +131,50 @@ func (m taskModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m taskModel) View() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render(funcName(m.funcType) + " - 执行中"))
+	b.WriteString(titleStyle.Render("  " + funcName(m.funcType) + " - 执行中"))
 	b.WriteString("\n\n")
+
+	// 卡片内容
+	var card strings.Builder
 
 	// 参数摘要
 	if prompt, ok := m.params["prompt"]; ok && prompt != "" {
 		display := prompt
-		if len(display) > 60 {
-			display = display[:57] + "..."
+		if len(display) > 55 {
+			display = display[:52] + "..."
 		}
-		b.WriteString(statusBarStyle.Render("提示词: " + display))
-		b.WriteString("\n")
+		card.WriteString(menuDescStyle.Render("提示词: " + display))
+		card.WriteString("\n\n")
 	}
-	b.WriteString("\n")
 
 	// 步骤列表
+	if len(m.steps) == 0 {
+		card.WriteString(fmt.Sprintf("%s 准备中...", m.spinner.View()))
+	}
 	for _, step := range m.steps {
 		if step.err != nil {
-			b.WriteString(errorStyle.Render("  ✗ " + step.name + ": " + step.err.Error()))
+			card.WriteString(errorStyle.Render("✗ " + step.name + ": " + step.err.Error()))
 		} else if step.done {
-			b.WriteString(successStyle.Render("  ✓ " + step.name))
+			card.WriteString(successStyle.Render("✓ " + step.name))
 		} else {
-			b.WriteString(fmt.Sprintf("  %s %s", m.spinner.View(), step.name))
+			card.WriteString(fmt.Sprintf("%s %s", m.spinner.View(), step.name))
 		}
-		b.WriteString("\n")
+		card.WriteString("\n")
 	}
 
 	// 进度条
 	if m.progressPct > 0 {
-		b.WriteString("\n")
-		b.WriteString("  " + m.progress.View())
-		b.WriteString("\n")
+		card.WriteString("\n")
+		card.WriteString(m.progress.View())
 		if m.statusText != "" {
-			b.WriteString(statusBarStyle.Render(m.statusText))
-			b.WriteString("\n")
+			card.WriteString("\n")
+			card.WriteString(menuDescStyle.Render(m.statusText))
 		}
 	}
 
-	b.WriteString("\n")
+	b.WriteString(boxStyle.Render(card.String()))
+
+	b.WriteString("\n\n")
 	b.WriteString(helpStyle.Render("  Ctrl+C 退出"))
 
 	return b.String()
@@ -187,6 +193,8 @@ func (m taskModel) startExecution() tea.Cmd {
 		return m.executeEnhancePrompt()
 	case funcWatermarkFree:
 		return m.executeWatermarkFree()
+	case funcCreditBalance:
+		return m.executeCreditBalance()
 	}
 	return nil
 }
@@ -437,6 +445,48 @@ func (m taskModel) executeWatermarkFree() tea.Cmd {
 		}
 
 		return taskCompleteMsg{resultURL: url}
+	}
+}
+
+func (m taskModel) executeCreditBalance() tea.Cmd {
+	return func() tea.Msg {
+		balance, err := m.client.GetCreditBalance(m.accessToken)
+		if err != nil {
+			return taskCompleteMsg{err: err}
+		}
+
+		resetMin := balance.AccessResetsInSec / 60
+		resetHour := resetMin / 60
+		resetMin = resetMin % 60
+
+		result := fmt.Sprintf("剩余可用次数: %d\n", balance.RemainingCount)
+		if balance.RateLimitReached {
+			result += "  速率限制: 已触发\n"
+		}
+		if balance.AccessResetsInSec > 0 {
+			result += fmt.Sprintf("  配额重置: %d小时%d分钟后\n", resetHour, resetMin)
+		}
+
+		// 查询订阅信息
+		sub, err := m.client.GetSubscriptionInfo(m.accessToken)
+		if err == nil {
+			result += "\n"
+			if sub.PlanTitle != "" {
+				result += fmt.Sprintf("  账号类型: %s\n", sub.PlanTitle)
+			}
+			if sub.EndTs > 0 {
+				expireTime := time.Unix(sub.EndTs, 0)
+				remaining := time.Until(expireTime)
+				if remaining > 0 {
+					days := int(remaining.Hours() / 24)
+					result += fmt.Sprintf("  到期时间: %s（剩余 %d 天）", expireTime.Format("2006-01-02"), days)
+				} else {
+					result += fmt.Sprintf("  到期时间: %s（已过期）", expireTime.Format("2006-01-02"))
+				}
+			}
+		}
+
+		return taskCompleteMsg{resultURL: result}
 	}
 }
 

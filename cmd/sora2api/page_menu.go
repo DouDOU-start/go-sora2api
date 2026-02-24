@@ -3,8 +3,12 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/DouDOU-start/go-sora2api/sora"
 )
 
 type menuItem struct {
@@ -25,6 +29,13 @@ type menuModel struct {
 	cursor   int // 全局游标
 	width    int
 	allItems []menuItem // 扁平化列表
+
+	// 账号信息
+	accountLoading bool
+	accountSpinner spinner.Model
+	balance        *sora.CreditBalance
+	sub            *sora.SubscriptionInfo
+	accountErr     error
 }
 
 func newMenuModel() menuModel {
@@ -65,16 +76,36 @@ func newMenuModel() menuModel {
 		all = append(all, g.items...)
 	}
 
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = spinnerStyle()
+
 	return menuModel{
-		groups:   groups,
-		allItems: all,
+		groups:         groups,
+		allItems:       all,
+		accountLoading: true,
+		accountSpinner: s,
 	}
 }
 
-func (m menuModel) Init() tea.Cmd { return nil }
+func (m menuModel) Init() tea.Cmd { return m.accountSpinner.Tick }
 
 func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		if m.accountLoading {
+			var cmd tea.Cmd
+			m.accountSpinner, cmd = m.accountSpinner.Update(msg)
+			return m, cmd
+		}
+
+	case accountInfoMsg:
+		m.accountLoading = false
+		m.accountErr = msg.err
+		m.balance = msg.balance
+		m.sub = msg.sub
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
@@ -104,6 +135,7 @@ func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m menuModel) View() string {
 	var b strings.Builder
 
+	// 菜单列表
 	globalIdx := 0
 	for _, g := range m.groups {
 		b.WriteString(groupTitleStyle.Render(g.title))
@@ -126,6 +158,62 @@ func (m menuModel) View() string {
 
 	b.WriteString("\n")
 	b.WriteString(helpStyle.Render("  ↑/↓ 移动  |  Enter 选择  |  q 退出"))
+
+	return b.String()
+}
+
+// renderAccountCard 渲染账号信息卡片
+func (m menuModel) renderAccountCard() string {
+	var b strings.Builder
+
+	if m.accountLoading {
+		b.WriteString(fmt.Sprintf("  %s 正在获取账号信息...", m.accountSpinner.View()))
+		return b.String()
+	}
+
+	if m.accountErr != nil {
+		b.WriteString(warnStyle.Render("  ⚠ 获取账号信息失败"))
+		return b.String()
+	}
+
+	// 订阅信息
+	if m.sub != nil && m.sub.PlanTitle != "" {
+		b.WriteString(labelStyle.Render("  套餐"))
+		b.WriteString("  ")
+		b.WriteString(successStyle.Render(m.sub.PlanTitle))
+		if m.sub.EndTs > 0 {
+			expireTime := time.Unix(m.sub.EndTs, 0)
+			remaining := time.Until(expireTime)
+			if remaining > 0 {
+				days := int(remaining.Hours() / 24)
+				b.WriteString(menuDescStyle.Render(fmt.Sprintf("  到期 %s（%d天后）", expireTime.Format("2006-01-02"), days)))
+			} else {
+				b.WriteString(errorStyle.Render("  已过期"))
+			}
+		}
+		b.WriteString("\n")
+	}
+
+	// 配额信息
+	if m.balance != nil {
+		b.WriteString(labelStyle.Render("  配额"))
+		b.WriteString("  ")
+		countStr := fmt.Sprintf("剩余 %d 次", m.balance.RemainingCount)
+		if m.balance.RemainingCount > 0 {
+			b.WriteString(successStyle.Render(countStr))
+		} else {
+			b.WriteString(errorStyle.Render(countStr))
+		}
+		if m.balance.RateLimitReached {
+			b.WriteString(warnStyle.Render("  (已限速)"))
+		}
+		if m.balance.AccessResetsInSec > 0 {
+			resetMin := m.balance.AccessResetsInSec / 60
+			resetHour := resetMin / 60
+			resetMin = resetMin % 60
+			b.WriteString(menuDescStyle.Render(fmt.Sprintf("  %d时%d分后重置", resetHour, resetMin)))
+		}
+	}
 
 	return b.String()
 }

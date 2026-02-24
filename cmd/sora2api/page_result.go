@@ -37,22 +37,29 @@ func (m resultModel) View() string {
 	var b strings.Builder
 
 	if m.err != nil {
-		b.WriteString(errorStyle.Render(funcName(m.funcType) + " - 失败"))
-		b.WriteString("\n\n")
-		b.WriteString(errorStyle.Render("  ✗ " + m.err.Error()))
-	} else {
-		b.WriteString(successStyle.Render(funcName(m.funcType) + " - 完成"))
+		b.WriteString(errorStyle.Render("  " + funcName(m.funcType) + " - 失败"))
 		b.WriteString("\n\n")
 
-		if m.funcType == funcEnhancePrompt {
-			b.WriteString(labelStyle.Render("  优化后的提示词:"))
-			b.WriteString("\n\n")
-			b.WriteString("  " + m.resultURL)
-		} else {
-			b.WriteString(labelStyle.Render("  下载链接:"))
-			b.WriteString("\n\n")
-			b.WriteString("  " + urlStyle.Render(m.resultURL))
+		errContent := errorStyle.Render("✗ " + m.err.Error())
+		b.WriteString(boxStyle.Render(errContent))
+	} else {
+		b.WriteString(successStyle.Render("  " + funcName(m.funcType) + " - 完成"))
+		b.WriteString("\n\n")
+
+		var content strings.Builder
+		switch m.funcType {
+		case funcEnhancePrompt:
+			content.WriteString(labelStyle.Render("优化后的提示词:"))
+			content.WriteString("\n\n")
+			content.WriteString(m.resultURL)
+		case funcCreditBalance:
+			content.WriteString(m.resultURL)
+		default:
+			content.WriteString(labelStyle.Render("下载链接:"))
+			content.WriteString("\n\n")
+			content.WriteString(urlStyle.Render(m.resultURL))
 		}
+		b.WriteString(boxStyle.Render(content.String()))
 	}
 
 	b.WriteString("\n\n")

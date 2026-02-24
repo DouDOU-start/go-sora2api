@@ -73,4 +73,11 @@ var (
 	urlStyle = lipgloss.NewStyle().
 			Foreground(colorPrimary).
 			Underline(true)
+
+	// 账号信息卡片
+	accountCardStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorBorder).
+				Padding(0, 1).
+				MarginLeft(2)
 )
