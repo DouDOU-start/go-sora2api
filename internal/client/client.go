@@ -186,6 +186,128 @@ func (c *SoraClient) CreateVideoTask(accessToken, sentinelToken, prompt, orienta
 	return taskID, nil
 }
 
+// CreateImageTask 创建图片生成任务
+func (c *SoraClient) CreateImageTask(accessToken, sentinelToken, prompt string, width, height int) (string, error) {
+	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
+
+	headers := map[string]string{
+		"Authorization":         "Bearer " + accessToken,
+		"openai-sentinel-token": sentinelToken,
+		"Content-Type":          "application/json",
+		"User-Agent":            userAgent,
+		"Origin":                "https://sora.chatgpt.com",
+		"Referer":               "https://sora.chatgpt.com/",
+	}
+
+	payload := map[string]interface{}{
+		"type":          "image_gen",
+		"operation":     "simple_compose",
+		"prompt":        prompt,
+		"width":         width,
+		"height":        height,
+		"n_variants":    1,
+		"n_frames":      1,
+		"inpaint_items": []interface{}{},
+	}
+
+	resp, err := c.doPost(soraBaseURL+"/video_gen", headers, payload)
+	if err != nil {
+		return "", fmt.Errorf("创建图片任务失败: %w", err)
+	}
+
+	taskID, ok := resp["id"].(string)
+	if !ok || taskID == "" {
+		return "", fmt.Errorf("响应中无 task_id: %v", resp)
+	}
+
+	return taskID, nil
+}
+
+// PollImageTask 轮询图片任务进度，返回图片 URL
+func (c *SoraClient) PollImageTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration) (string, error) {
+	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
+	headers := map[string]string{
+		"Authorization": "Bearer " + accessToken,
+		"User-Agent":    userAgent,
+	}
+
+	startTime := time.Now()
+	time.Sleep(2 * time.Second)
+
+	for {
+		elapsed := time.Since(startTime)
+		if elapsed > pollTimeout {
+			return "", fmt.Errorf("轮询超时 (%v)", pollTimeout)
+		}
+
+		body, err := c.doGet(soraBaseURL+"/v2/recent_tasks?limit=20", headers)
+		if err != nil {
+			fmt.Printf("  [轮询错误] %v\n", err)
+			time.Sleep(pollInterval)
+			continue
+		}
+
+		var result map[string]interface{}
+		if err := json.Unmarshal(body, &result); err != nil {
+			fmt.Printf("  [解析错误] %v\n", err)
+			time.Sleep(pollInterval)
+			continue
+		}
+
+		taskResponses, _ := result["task_responses"].([]interface{})
+		for _, taskRaw := range taskResponses {
+			task, ok := taskRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			id, _ := task["id"].(string)
+			if id != taskID {
+				continue
+			}
+
+			status, _ := task["status"].(string)
+			progressPct := 0
+			if p, ok := task["progress_pct"].(float64); ok {
+				if p > 0 && p <= 1 {
+					progressPct = int(p * 100)
+				} else {
+					progressPct = int(p)
+				}
+			}
+
+			fmt.Printf("\r  进度: %d%%  状态: %s  耗时: %ds    ", progressPct, status, int(elapsed.Seconds()))
+
+			if status == "failed" || status == "error" {
+				fmt.Println()
+				reason, _ := task["failure_reason"].(string)
+				return "", fmt.Errorf("任务失败: %s", reason)
+			}
+
+			if status == "succeeded" {
+				fmt.Println()
+				// 从 generations 中提取图片 URL
+				generations, _ := task["generations"].([]interface{})
+				for _, genRaw := range generations {
+					gen, ok := genRaw.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					url, _ := gen["url"].(string)
+					if url != "" {
+						return url, nil
+					}
+				}
+				return "", fmt.Errorf("任务成功但未找到图片 URL")
+			}
+
+			break
+		}
+
+		time.Sleep(pollInterval)
+	}
+}
+
 // PollVideoTask 轮询视频任务进度
 func (c *SoraClient) PollVideoTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration) error {
 	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
