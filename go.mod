@@ -1,4 +1,4 @@
-module go-sora2api
+module github.com/DouDOU-start/go-sora2api
 
 go 1.24.1
 

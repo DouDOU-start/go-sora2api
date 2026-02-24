@@ -1,4 +1,4 @@
-package client
+package sora
 
 import (
 	"encoding/json"
@@ -6,9 +6,6 @@ import (
 	"math/rand"
 	"strings"
 	"time"
-
-	"go-sora2api/internal/pow"
-	"go-sora2api/internal/util"
 
 	http "github.com/bogdanfinn/fhttp"
 	tls_client "github.com/bogdanfinn/tls-client"
@@ -36,13 +33,23 @@ var mobileUserAgents = []string{
 	"Sora/1.2026.007 (Android 15; OnePlus 12; build 2600700)",
 }
 
-// SoraClient Sora API 客户端
-type SoraClient struct {
+// Progress 任务进度信息
+type Progress struct {
+	Percent int    // 进度百分比 0-100
+	Status  string // 任务状态
+	Elapsed int    // 已耗时（秒）
+}
+
+// ProgressFunc 进度回调函数类型
+type ProgressFunc func(Progress)
+
+// Client Sora API 客户端
+type Client struct {
 	httpClient tls_client.HttpClient
 }
 
-// New 创建客户端
-func New(proxyURL string) (*SoraClient, error) {
+// New 创建客户端，proxyURL 为空则不使用代理
+func New(proxyURL string) (*Client, error) {
 	options := []tls_client.HttpClientOption{
 		tls_client.WithClientProfile(profiles.Chrome_131),
 		tls_client.WithTimeoutSeconds(30),
@@ -58,10 +65,10 @@ func New(proxyURL string) (*SoraClient, error) {
 		return nil, fmt.Errorf("创建 TLS 客户端失败: %w", err)
 	}
 
-	return &SoraClient{httpClient: c}, nil
+	return &Client{httpClient: c}, nil
 }
 
-func (c *SoraClient) doPost(url string, headers map[string]string, body interface{}) (map[string]interface{}, error) {
+func (c *Client) doPost(url string, headers map[string]string, body interface{}) (map[string]interface{}, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -93,7 +100,7 @@ func (c *SoraClient) doPost(url string, headers map[string]string, body interfac
 	return result, nil
 }
 
-func (c *SoraClient) doGet(url string, headers map[string]string) ([]byte, error) {
+func (c *Client) doGet(url string, headers map[string]string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -108,23 +115,23 @@ func (c *SoraClient) doGet(url string, headers map[string]string) ([]byte, error
 	}
 	defer resp.Body.Close()
 
-	buf, err := util.ReadAll(resp.Body)
+	buf, err := readAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return buf, fmt.Errorf("HTTP %d: %s", resp.StatusCode, util.Truncate(string(buf), 200))
+		return buf, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(buf), 200))
 	}
 
 	return buf, nil
 }
 
 // GenerateSentinelToken 获取 sentinel token（含 PoW 计算）
-func (c *SoraClient) GenerateSentinelToken(accessToken string) (string, error) {
-	reqID := util.GenerateUUID()
+func (c *Client) GenerateSentinelToken(accessToken string) (string, error) {
+	reqID := generateUUID()
 	userAgent := desktopUserAgents[rand.Intn(len(desktopUserAgents))]
-	powToken := pow.GetToken(userAgent)
+	powToken := getPowToken(userAgent)
 
 	headers := map[string]string{
 		"Accept":        "application/json, text/plain, */*",
@@ -146,11 +153,11 @@ func (c *SoraClient) GenerateSentinelToken(accessToken string) (string, error) {
 		return "", fmt.Errorf("sentinel 请求失败: %w", err)
 	}
 
-	return pow.BuildSentinelToken(sentinelFlow, reqID, powToken, resp, userAgent), nil
+	return buildSentinelToken(sentinelFlow, reqID, powToken, resp, userAgent), nil
 }
 
 // CreateVideoTask 创建视频生成任务
-func (c *SoraClient) CreateVideoTask(accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size string) (string, error) {
+func (c *Client) CreateVideoTask(accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size string) (string, error) {
 	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
 
 	headers := map[string]string{
@@ -187,7 +194,7 @@ func (c *SoraClient) CreateVideoTask(accessToken, sentinelToken, prompt, orienta
 }
 
 // CreateImageTask 创建图片生成任务
-func (c *SoraClient) CreateImageTask(accessToken, sentinelToken, prompt string, width, height int) (string, error) {
+func (c *Client) CreateImageTask(accessToken, sentinelToken, prompt string, width, height int) (string, error) {
 	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
 
 	headers := map[string]string{
@@ -224,7 +231,8 @@ func (c *SoraClient) CreateImageTask(accessToken, sentinelToken, prompt string, 
 }
 
 // PollImageTask 轮询图片任务进度，返回图片 URL
-func (c *SoraClient) PollImageTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration) (string, error) {
+// onProgress 可为 nil，非 nil 时在每次轮询后回调进度
+func (c *Client) PollImageTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) (string, error) {
 	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
 	headers := map[string]string{
 		"Authorization": "Bearer " + accessToken,
@@ -242,14 +250,12 @@ func (c *SoraClient) PollImageTask(accessToken, taskID string, pollInterval, pol
 
 		body, err := c.doGet(soraBaseURL+"/v2/recent_tasks?limit=20", headers)
 		if err != nil {
-			fmt.Printf("  [轮询错误] %v\n", err)
 			time.Sleep(pollInterval)
 			continue
 		}
 
 		var result map[string]interface{}
 		if err := json.Unmarshal(body, &result); err != nil {
-			fmt.Printf("  [解析错误] %v\n", err)
 			time.Sleep(pollInterval)
 			continue
 		}
@@ -276,17 +282,20 @@ func (c *SoraClient) PollImageTask(accessToken, taskID string, pollInterval, pol
 				}
 			}
 
-			fmt.Printf("\r  进度: %d%%  状态: %s  耗时: %ds    ", progressPct, status, int(elapsed.Seconds()))
+			if onProgress != nil {
+				onProgress(Progress{
+					Percent: progressPct,
+					Status:  status,
+					Elapsed: int(elapsed.Seconds()),
+				})
+			}
 
 			if status == "failed" || status == "error" {
-				fmt.Println()
 				reason, _ := task["failure_reason"].(string)
 				return "", fmt.Errorf("任务失败: %s", reason)
 			}
 
 			if status == "succeeded" {
-				fmt.Println()
-				// 从 generations 中提取图片 URL
 				generations, _ := task["generations"].([]interface{})
 				for _, genRaw := range generations {
 					gen, ok := genRaw.(map[string]interface{})
@@ -309,7 +318,8 @@ func (c *SoraClient) PollImageTask(accessToken, taskID string, pollInterval, pol
 }
 
 // PollVideoTask 轮询视频任务进度
-func (c *SoraClient) PollVideoTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration) error {
+// onProgress 可为 nil，非 nil 时在每次轮询后回调进度
+func (c *Client) PollVideoTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) error {
 	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
 	headers := map[string]string{
 		"Authorization": "Bearer " + accessToken,
@@ -331,14 +341,12 @@ func (c *SoraClient) PollVideoTask(accessToken, taskID string, pollInterval, pol
 
 		body, err := c.doGet(soraBaseURL+"/nf/pending/v2", headers)
 		if err != nil {
-			fmt.Printf("  [轮询错误] %v\n", err)
 			time.Sleep(pollInterval)
 			continue
 		}
 
 		var tasks []map[string]interface{}
 		if err := json.Unmarshal(body, &tasks); err != nil {
-			fmt.Printf("  [解析错误] %v\n", err)
 			time.Sleep(pollInterval)
 			continue
 		}
@@ -366,10 +374,15 @@ func (c *SoraClient) PollVideoTask(accessToken, taskID string, pollInterval, pol
 					maxProgress = progressPct
 				}
 
-				fmt.Printf("\r  进度: %d%%  状态: %s  耗时: %ds    ", maxProgress, status, int(elapsed.Seconds()))
+				if onProgress != nil {
+					onProgress(Progress{
+						Percent: maxProgress,
+						Status:  status,
+						Elapsed: int(elapsed.Seconds()),
+					})
+				}
 
 				if status == "failed" || status == "error" {
-					fmt.Println()
 					reason, _ := task["failure_reason"].(string)
 					return fmt.Errorf("任务失败: %s", reason)
 				}
@@ -380,11 +393,9 @@ func (c *SoraClient) PollVideoTask(accessToken, taskID string, pollInterval, pol
 		if !found {
 			notFoundCount++
 			if everFound && notFoundCount >= 2 {
-				fmt.Printf("\n[信息] 任务已从 pending 列表移除，视频生成完成! 耗时: %ds\n", int(elapsed.Seconds()))
 				return nil
 			}
 			if !everFound && elapsed.Seconds() > 30 {
-				fmt.Println("\n[信息] 任务未在 pending 列表中出现，可能已快速完成")
 				return nil
 			}
 		}
@@ -394,7 +405,7 @@ func (c *SoraClient) PollVideoTask(accessToken, taskID string, pollInterval, pol
 }
 
 // GetDownloadURL 从 drafts 接口获取下载链接
-func (c *SoraClient) GetDownloadURL(accessToken, taskID string) (string, error) {
+func (c *Client) GetDownloadURL(accessToken, taskID string) (string, error) {
 	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
 	headers := map[string]string{
 		"Authorization": "Bearer " + accessToken,
@@ -404,7 +415,6 @@ func (c *SoraClient) GetDownloadURL(accessToken, taskID string) (string, error) 
 	for attempt := 0; attempt < 3; attempt++ {
 		body, err := c.doGet(soraBaseURL+"/project_y/profile/drafts?limit=15", headers)
 		if err != nil {
-			fmt.Printf("  [获取结果错误] %v\n", err)
 			if attempt < 2 {
 				time.Sleep(3 * time.Second)
 			}
@@ -413,7 +423,6 @@ func (c *SoraClient) GetDownloadURL(accessToken, taskID string) (string, error) 
 
 		var result map[string]interface{}
 		if err := json.Unmarshal(body, &result); err != nil {
-			fmt.Printf("  [解析错误] %v\n", err)
 			if attempt < 2 {
 				time.Sleep(3 * time.Second)
 			}
@@ -454,8 +463,6 @@ func (c *SoraClient) GetDownloadURL(accessToken, taskID string) (string, error) 
 			if downloadURL != "" {
 				return downloadURL, nil
 			}
-
-			fmt.Println("  [警告] 找到任务但无下载链接，等待重试...")
 		}
 
 		if attempt < 2 {

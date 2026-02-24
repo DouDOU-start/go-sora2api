@@ -1,4 +1,4 @@
-package util
+package sora
 
 import (
 	"fmt"
@@ -32,12 +32,11 @@ func ParseProxy(proxy string) string {
 		return fmt.Sprintf("http://%s", proxy)
 	}
 
-	fmt.Printf("[警告] 无法识别的代理格式: %s\n", proxy)
 	return ""
 }
 
-// GenerateUUID 生成随机 UUID v4
-func GenerateUUID() string {
+// generateUUID 生成随机 UUID v4
+func generateUUID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	b[6] = (b[6] & 0x0f) | 0x40
@@ -46,13 +45,13 @@ func GenerateUUID() string {
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// ReadAll 读取 io.Reader 全部内容
-func ReadAll(r io.Reader) ([]byte, error) {
+// readAll 读取 io.Reader 全部内容
+func readAll(r io.Reader) ([]byte, error) {
 	return io.ReadAll(r)
 }
 
-// Truncate 截断字符串
-func Truncate(s string, maxLen int) string {
+// truncate 截断字符串
+func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}

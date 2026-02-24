@@ -1,4 +1,4 @@
-package pow
+package sora
 
 import (
 	"encoding/base64"
@@ -8,8 +8,6 @@ import (
 	"math/rand"
 	"strconv"
 	"time"
-
-	"go-sora2api/internal/util"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -79,7 +77,7 @@ func getConfig(userAgent string) []interface{} {
 		documentKeys[rand.Intn(len(documentKeys))],
 		windowKeys[rand.Intn(len(windowKeys))],
 		perfCounter,
-		util.GenerateUUID(),
+		generateUUID(),
 		"",
 		cores[rand.Intn(len(cores))],
 		timeMs - perfCounter,
@@ -158,16 +156,16 @@ func mustJSONStr(s string) string {
 	return string(b)
 }
 
-// GetToken 生成初始 PoW token
-func GetToken(userAgent string) string {
+// getPowToken 生成初始 PoW token
+func getPowToken(userAgent string) string {
 	configList := getConfig(userAgent)
 	seed := strconv.FormatFloat(rand.Float64(), 'f', -1, 64)
 	solution, _ := solve(seed, "0fffff", configList)
 	return "gAAAAAC" + solution
 }
 
-// BuildSentinelToken 从 sentinel/req 响应构建最终的 sentinel token
-func BuildSentinelToken(flow, reqID, powToken string, resp map[string]interface{}, userAgent string) string {
+// buildSentinelToken 从 sentinel/req 响应构建最终的 sentinel token
+func buildSentinelToken(flow, reqID, powToken string, resp map[string]interface{}, userAgent string) string {
 	finalPowToken := powToken
 
 	if proofofwork, ok := resp["proofofwork"].(map[string]interface{}); ok {
@@ -176,11 +174,8 @@ func BuildSentinelToken(flow, reqID, powToken string, resp map[string]interface{
 			difficulty, _ := proofofwork["difficulty"].(string)
 			if seed != "" && difficulty != "" {
 				configList := getConfig(userAgent)
-				solution, success := solve(seed, difficulty, configList)
+				solution, _ := solve(seed, difficulty, configList)
 				finalPowToken = "gAAAAAB" + solution
-				if !success {
-					fmt.Println("[警告] PoW 计算失败，使用错误 token")
-				}
 			}
 		}
 	}

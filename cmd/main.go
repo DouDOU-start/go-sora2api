@@ -7,8 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"go-sora2api/internal/client"
-	"go-sora2api/internal/util"
+	"github.com/DouDOU-start/go-sora2api/sora"
 )
 
 var (
@@ -33,7 +32,7 @@ func main() {
 
 	// 输入代理
 	fmt.Print("请输入代理 (留空不使用代理): ")
-	proxyURL := util.ParseProxy(readLine(reader))
+	proxyURL := sora.ParseProxy(readLine(reader))
 
 	// 选择生成类型
 	fmt.Println("\n请选择生成类型:")
@@ -67,7 +66,7 @@ func main() {
 	fmt.Printf("提示词: %s\n", prompt)
 
 	// 创建客户端
-	c, err := client.New(proxyURL)
+	c, err := sora.New(proxyURL)
 	if err != nil {
 		fmt.Printf("[错误] 创建客户端失败: %v\n", err)
 		return
@@ -89,7 +88,12 @@ func main() {
 	}
 }
 
-func generateImage(reader *bufio.Reader, c *client.SoraClient, accessToken, sentinelToken, prompt string) {
+// 进度回调：在终端打印进度
+func printProgress(p sora.Progress) {
+	fmt.Printf("\r  进度: %d%%  状态: %s  耗时: %ds    ", p.Percent, p.Status, p.Elapsed)
+}
+
+func generateImage(reader *bufio.Reader, c *sora.Client, accessToken, sentinelToken, prompt string) {
 	// 选择图片尺寸
 	fmt.Println("\n请选择图片尺寸:")
 	fmt.Println("  1) 正方形 (360x360)")
@@ -120,16 +124,16 @@ func generateImage(reader *bufio.Reader, c *client.SoraClient, accessToken, sent
 
 	// 轮询进度并获取结果
 	fmt.Printf("[步骤 3/3] 开始轮询任务进度 (超时: %v)...\n", pollTimeout)
-	imageURL, err := c.PollImageTask(accessToken, taskID, pollInterval, pollTimeout)
+	imageURL, err := c.PollImageTask(accessToken, taskID, pollInterval, pollTimeout, printProgress)
 	if err != nil {
-		fmt.Printf("[错误] 轮询失败: %v\n", err)
+		fmt.Printf("\n[错误] 轮询失败: %v\n", err)
 		return
 	}
 
 	fmt.Printf("\n[完成] 图片下载链接:\n  %s\n", imageURL)
 }
 
-func generateVideo(reader *bufio.Reader, c *client.SoraClient, accessToken, sentinelToken, prompt string) {
+func generateVideo(reader *bufio.Reader, c *sora.Client, accessToken, sentinelToken, prompt string) {
 	// 选择方向
 	fmt.Println("\n请选择视频方向:")
 	fmt.Println("  1) 横向 (landscape)")
@@ -197,14 +201,14 @@ func generateVideo(reader *bufio.Reader, c *client.SoraClient, accessToken, sent
 
 	// 轮询进度
 	fmt.Printf("[步骤 3/4] 开始轮询任务进度 (超时: %v)...\n", pollTimeout)
-	err = c.PollVideoTask(accessToken, taskID, pollInterval, pollTimeout)
+	err = c.PollVideoTask(accessToken, taskID, pollInterval, pollTimeout, printProgress)
 	if err != nil {
-		fmt.Printf("[错误] 轮询失败: %v\n", err)
+		fmt.Printf("\n[错误] 轮询失败: %v\n", err)
 		return
 	}
 
 	// 获取下载链接
-	fmt.Println("[步骤 4/4] 正在获取视频下载链接...")
+	fmt.Println("\n[步骤 4/4] 正在获取视频下载链接...")
 	downloadURL, err := c.GetDownloadURL(accessToken, taskID)
 	if err != nil {
 		fmt.Printf("[错误] 获取下载链接失败: %v\n", err)
