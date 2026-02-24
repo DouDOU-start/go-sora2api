@@ -256,7 +256,7 @@ func (c *Client) EnhancePrompt(accessToken, prompt, expansionLevel string, durat
 }
 
 // DefaultSoraClientID 默认的 Sora 客户端 ID
-const DefaultSoraClientID = "app_OHnYmJt5u1XEdhDUx0ig1ziv"
+const DefaultSoraClientID = "app_1LOVEceTvrP2tHFDNnrPLQkJ"
 
 // RefreshAccessToken 使用 refresh_token 获取新的 access_token
 // 返回新的 accessToken 和 refreshToken（OpenAI 每次刷新都会返回新的 refresh_token）
