@@ -155,13 +155,14 @@ c, _ := sora.New(proxy)
 提供交互式命令行工具，支持全部功能：
 
 ```bash
-go install github.com/DouDOU-start/go-sora2api/cmd@latest
+go install github.com/DouDOU-start/go-sora2api/cmd/sora2api@latest
+sora2api
 ```
 
 或编译后运行：
 
 ```bash
-go build -o sora2api ./cmd/
+go build -o sora2api ./cmd/sora2api/
 ./sora2api
 ```
 
@@ -169,12 +170,15 @@ go build -o sora2api ./cmd/
 
 ```
 go-sora2api/
-├── sora/              # 公开 SDK 包
-│   ├── client.go      # 客户端 + 全部 API 方法
-│   ├── pow.go         # PoW (SHA3-512) 算法
-│   └── util.go        # 代理解析等工具
-├── cmd/
-│   └── main.go        # 交互式 CLI 工具
+├── sora/                    # 公开 SDK 包
+│   ├── client.go            # 客户端基础 + Sentinel Token
+│   ├── task.go              # 任务创建（Upload/Image/Video/Remix/Enhance）
+│   ├── poll.go              # 任务轮询 + 下载链接
+│   ├── style.go             # 风格提取 + Remix ID 解析
+│   ├── pow.go               # PoW (SHA3-512) 算法
+│   └── util.go              # 代理解析等工具
+├── cmd/sora2api/
+│   └── main.go              # 交互式 CLI 工具
 ├── go.mod
 └── README.md
 ```
