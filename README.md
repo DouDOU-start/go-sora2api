@@ -7,6 +7,7 @@ Sora 视频/图片生成 Go SDK，通过 TLS 指纹模拟绕过 Cloudflare 验�
 - 文生图 / 图生图
 - 文生视频 / 图生视频
 - 视频 Remix（基于已有视频再创作）
+- 获取去水印下载链接
 - 10 种视频风格（anime、retro、comic 等）
 - 提示词优化（AI 自动扩展提示词）
 - 进度回调
@@ -84,6 +85,23 @@ token, _ := c.GenerateSentinelToken(accessToken)
 taskID, _ := c.RemixVideo(accessToken, token, remixID, "make it snowy", "landscape", 150, "")
 _ = c.PollVideoTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
 url, _ := c.GetDownloadURL(accessToken, taskID)
+```
+
+### 获取去水印下载链接
+
+> 注意：此功能需要 `refresh_token`，不支持普通的 ChatGPT `access_token`。
+
+```go
+c, _ := sora.New("")
+
+// 1. 使用 refresh_token 刷新获取专用 access_token
+soraToken, newRefreshToken, _ := c.RefreshAccessToken(refreshToken, "")
+// newRefreshToken 已更新，需保存供下次使用
+
+// 2. 获取去水印链接（支持传入完整链接或视频 ID）
+url, _ := c.GetWatermarkFreeURL(soraToken, "https://sora.chatgpt.com/p/s_xxx")
+// 或
+url, _ := c.GetWatermarkFreeURL(soraToken, "s_xxx")
 ```
 
 ### 提示词优化

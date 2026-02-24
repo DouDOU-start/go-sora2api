@@ -46,6 +46,17 @@ func ExtractRemixID(text string) string {
 	return match
 }
 
+// ExtractVideoID 从 Sora 分享链接或文本中提取视频 ID
+// 支持: https://sora.chatgpt.com/p/s_xxx 或直接 s_xxx 等格式
+func ExtractVideoID(text string) string {
+	re := regexp.MustCompile(`sora\.chatgpt\.com/p/([a-zA-Z0-9_]+)`)
+	match := re.FindStringSubmatch(text)
+	if match != nil {
+		return match[1]
+	}
+	return ""
+}
+
 func nilIfEmpty(s string) interface{} {
 	if s == "" {
 		return nil

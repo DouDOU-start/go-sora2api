@@ -2,6 +2,7 @@ package sora
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"mime/multipart"
@@ -252,4 +253,102 @@ func (c *Client) EnhancePrompt(accessToken, prompt, expansionLevel string, durat
 		return prompt, nil
 	}
 	return enhanced, nil
+}
+
+// DefaultSoraClientID 默认的 Sora 客户端 ID
+const DefaultSoraClientID = "app_OHnYmJt5u1XEdhDUx0ig1ziv"
+
+// RefreshAccessToken 使用 refresh_token 获取新的 access_token
+// 返回新的 accessToken 和 refreshToken（OpenAI 每次刷新都会返回新的 refresh_token）
+func (c *Client) RefreshAccessToken(refreshToken, clientID string) (newAccessToken, newRefreshToken string, err error) {
+	if clientID == "" {
+		clientID = DefaultSoraClientID
+	}
+
+	headers := map[string]string{
+		"Content-Type": "application/json",
+		"User-Agent":   mobileUserAgents[rand.Intn(len(mobileUserAgents))],
+	}
+
+	payload := map[string]string{
+		"client_id":    clientID,
+		"grant_type":   "refresh_token",
+		"redirect_uri": "com.openai.sora://auth.openai.com/android/com.openai.sora/callback",
+		"refresh_token": refreshToken,
+	}
+
+	resp, err := c.doPost("https://auth.openai.com/oauth/token", headers, payload)
+	if err != nil {
+		return "", "", fmt.Errorf("刷新 token 失败: %w", err)
+	}
+
+	newAccessToken, _ = resp["access_token"].(string)
+	newRefreshToken, _ = resp["refresh_token"].(string)
+	if newAccessToken == "" {
+		return "", "", fmt.Errorf("响应中无 access_token: %v", resp)
+	}
+
+	return newAccessToken, newRefreshToken, nil
+}
+
+// GetWatermarkFreeURL 获取 Sora 视频的无水印下载链接
+// 需要使用 RefreshAccessToken 获取的 token，普通 ChatGPT access_token 不支持
+// videoID 为 Sora 分享链接中的视频 ID，也可以传入完整链接（自动提取 ID）
+func (c *Client) GetWatermarkFreeURL(accessToken, videoID string) (string, error) {
+	// 如果传入的是完整链接，自动提取 ID
+	if extracted := ExtractVideoID(videoID); extracted != "" {
+		videoID = extracted
+	}
+
+	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
+
+	headers := map[string]string{
+		"Authorization":    "Bearer " + accessToken,
+		"User-Agent":       userAgent,
+		"Accept":           "application/json",
+		"oai-package-name": "com.openai.sora",
+	}
+
+	body, err := c.doGet(soraBaseURL+"/project_y/post/"+videoID, headers)
+	if err != nil {
+		return "", fmt.Errorf("获取视频信息失败: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	// 提取 post.attachments[0].encodings.source.path
+	post, _ := result["post"].(map[string]interface{})
+	if post == nil {
+		return "", fmt.Errorf("响应中无 post 字段: %v", result)
+	}
+
+	attachments, _ := post["attachments"].([]interface{})
+	if len(attachments) == 0 {
+		return "", fmt.Errorf("响应中无 attachments")
+	}
+
+	attachment, _ := attachments[0].(map[string]interface{})
+	if attachment == nil {
+		return "", fmt.Errorf("无法解析 attachment")
+	}
+
+	encodings, _ := attachment["encodings"].(map[string]interface{})
+	if encodings == nil {
+		return "", fmt.Errorf("响应中无 encodings")
+	}
+
+	source, _ := encodings["source"].(map[string]interface{})
+	if source == nil {
+		return "", fmt.Errorf("响应中无 source encoding")
+	}
+
+	path, _ := source["path"].(string)
+	if path == "" {
+		return "", fmt.Errorf("响应中无下载链接")
+	}
+
+	return path, nil
 }

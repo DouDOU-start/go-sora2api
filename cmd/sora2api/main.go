@@ -35,13 +35,14 @@ func main() {
 	proxyURL := sora.ParseProxy(readLine(reader))
 
 	// 选择生成类型
-	fmt.Println("\n请选择生成类型:")
+	fmt.Println("\n请选择功能:")
 	fmt.Println("  1) 文生图")
 	fmt.Println("  2) 图生图")
 	fmt.Println("  3) 文生视频")
 	fmt.Println("  4) 图生视频")
 	fmt.Println("  5) Remix 视频")
-	fmt.Print("请输入 (1-5) [默认 1]: ")
+	fmt.Println("  6) 获取去水印链接")
+	fmt.Print("请输入 (1-6) [默认 1]: ")
 	genChoice := readLine(reader)
 	if genChoice == "" {
 		genChoice = "1"
@@ -78,6 +79,8 @@ func main() {
 		generateVideoFromImage(reader, c, accessToken)
 	case "5":
 		remixVideo(reader, c, accessToken)
+	case "6":
+		getWatermarkFreeURL(reader, c, accessToken)
 	default:
 		fmt.Println("[错误] 无效的选择")
 	}
@@ -400,6 +403,47 @@ func remixVideo(reader *bufio.Reader, c *sora.Client, accessToken string) {
 	}
 
 	fmt.Printf("\n[完成] 视频下载链接:\n  %s\n", downloadURL)
+}
+
+func getWatermarkFreeURL(reader *bufio.Reader, c *sora.Client, _ string) {
+	fmt.Println("\n--- 去水印功能需要 refresh_token ---")
+	fmt.Print("请输入 refresh_token: ")
+	refreshToken := readLine(reader)
+	if refreshToken == "" {
+		fmt.Println("[错误] refresh_token 不能为空!")
+		return
+	}
+
+	fmt.Print("请输入 client_id (留空使用默认值): ")
+	clientID := readLine(reader)
+
+	// 刷新获取专用 access_token
+	fmt.Println("\n[步骤] 正在刷新 access_token...")
+	soraToken, newRT, err := c.RefreshAccessToken(refreshToken, clientID)
+	if err != nil {
+		fmt.Printf("[错误] 刷新 token 失败: %v\n", err)
+		return
+	}
+	fmt.Println("[步骤] access_token 获取成功")
+	if newRT != refreshToken {
+		fmt.Printf("[提示] refresh_token 已更新，请保存新值:\n  %s\n", newRT)
+	}
+
+	fmt.Print("\n请输入 Sora 视频分享链接或视频 ID: ")
+	input := readLine(reader)
+	if input == "" {
+		fmt.Println("[错误] 输入不能为空!")
+		return
+	}
+
+	fmt.Println("[步骤] 正在获取去水印链接...")
+	url, err := c.GetWatermarkFreeURL(soraToken, input)
+	if err != nil {
+		fmt.Printf("[错误] 获取失败: %v\n", err)
+		return
+	}
+
+	fmt.Printf("\n[完成] 去水印下载链接:\n  %s\n", url)
 }
 
 func readLine(reader *bufio.Reader) string {
