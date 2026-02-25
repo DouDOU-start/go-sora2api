@@ -3,18 +3,13 @@ package sora
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"time"
 )
 
 // PollImageTask 轮询图片任务进度，返回图片 URL
 // onProgress 可为 nil，非 nil 时在每次轮询后回调进度
 func (c *Client) PollImageTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    userAgent,
-	}
+	headers := baseHeaders(accessToken)
 
 	startTime := time.Now()
 	time.Sleep(2 * time.Second)
@@ -90,11 +85,7 @@ func (c *Client) PollImageTask(accessToken, taskID string, pollInterval, pollTim
 // PollVideoTask 轮询视频任务进度
 // onProgress 可为 nil，非 nil 时在每次轮询后回调进度
 func (c *Client) PollVideoTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) error {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    userAgent,
-	}
+	headers := baseHeaders(accessToken)
 
 	startTime := time.Now()
 	maxProgress := 0
@@ -168,11 +159,7 @@ func (c *Client) PollVideoTask(accessToken, taskID string, pollInterval, pollTim
 
 // GetDownloadURL 从 drafts 接口获取下载链接
 func (c *Client) GetDownloadURL(accessToken, taskID string) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    userAgent,
-	}
+	headers := baseHeaders(accessToken)
 
 	for attempt := 0; attempt < 3; attempt++ {
 		body, err := c.doGet(soraBaseURL+"/project_y/profile/drafts?limit=15", headers)
@@ -252,11 +239,7 @@ type VideoTaskResult struct {
 
 // QueryImageTaskOnce 单次查询图片任务状态（非阻塞，供 TUI 使用）
 func (c *Client) QueryImageTaskOnce(accessToken, taskID string, startTime time.Time) ImageTaskResult {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    userAgent,
-	}
+	headers := baseHeaders(accessToken)
 
 	elapsed := time.Since(startTime)
 
@@ -314,11 +297,7 @@ func (c *Client) QueryImageTaskOnce(accessToken, taskID string, startTime time.T
 // QueryVideoTaskOnce 单次查询视频任务状态（非阻塞，供 TUI 使用）
 // maxProgress 应传入之前的最大进度值，返回的结果中会包含更新后的进度
 func (c *Client) QueryVideoTaskOnce(accessToken, taskID string, startTime time.Time, maxProgress int) VideoTaskResult {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    userAgent,
-	}
+	headers := baseHeaders(accessToken)
 
 	elapsed := time.Since(startTime)
 
@@ -371,12 +350,8 @@ type CreditBalance struct {
 
 // GetCreditBalance 获取当前账号的可用次数和配额信息
 func (c *Client) GetCreditBalance(accessToken string) (CreditBalance, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"Accept":        "application/json",
-		"User-Agent":    userAgent,
-	}
+	headers := baseHeaders(accessToken)
+	headers["Accept"] = "application/json"
 
 	body, err := c.doGet(soraBaseURL+"/nf/check", headers)
 	if err != nil {
@@ -413,12 +388,8 @@ type SubscriptionInfo struct {
 
 // GetSubscriptionInfo 获取当前账号的订阅信息（套餐类型、到期时间）
 func (c *Client) GetSubscriptionInfo(accessToken string) (SubscriptionInfo, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"Accept":        "application/json",
-		"User-Agent":    userAgent,
-	}
+	headers := baseHeaders(accessToken)
+	headers["Accept"] = "application/json"
 
 	body, err := c.doGet(soraBaseURL+"/billing/subscriptions", headers)
 	if err != nil {

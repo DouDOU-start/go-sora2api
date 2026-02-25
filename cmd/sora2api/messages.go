@@ -29,6 +29,17 @@ type taskCompleteMsg struct {
 // 轮询计时器到期消息
 type tickPollMsg struct{}
 
+// 角色创建步骤消息（多步骤状态机）
+type charCreateStepMsg struct {
+	step            int
+	cameoID         string
+	profileAssetURL string
+	imageData       []byte
+	assetPointer    string
+	characterID     string
+	err             error
+}
+
 // 账号信息加载完成消息
 type accountInfoMsg struct {
 	balance *sora.CreditBalance

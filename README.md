@@ -7,9 +7,13 @@ Sora 视频/图片生成 Go SDK，通过 TLS 指纹模拟绕过 Cloudflare 验�
 - 文生图 / 图生图
 - 文生视频 / 图生视频
 - 视频 Remix（基于已有视频再创作）
+- 分镜视频（多场景拼接生成）
+- 角色管理（创建 / 删除角色）
+- 视频发布（发布去水印 / 删除帖子）
 - 获取去水印下载链接
 - 10 种视频风格（anime、retro、comic 等）
 - 提示词优化（AI 自动扩展提示词）
+- 账号信息查询（配额 / 订阅）
 - 进度回调
 - 代理支持
 
@@ -104,6 +108,57 @@ url, _ := c.GetWatermarkFreeURL(soraToken, "https://sora.chatgpt.com/p/s_xxx")
 url, _ := c.GetWatermarkFreeURL(soraToken, "s_xxx")
 ```
 
+### 分镜视频
+
+```go
+// 分镜格式：[时长]场景描述
+prompt := "[5.0s]一只猫在草地上奔跑 [5.0s]猫跳上了树"
+
+token, _ := c.GenerateSentinelToken(accessToken)
+taskID, _ := c.CreateStoryboardTask(accessToken, token, prompt, "landscape", 450, "", "")
+_ = c.PollVideoTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
+url, _ := c.GetDownloadURL(accessToken, taskID)
+```
+
+### 角色管理
+
+```go
+// 创建角色（全流程：上传视频 → 轮询处理 → 下载头像 → 上传头像 → 定稿 → 设置公开）
+cameoID, _ := c.UploadCharacterVideo(accessToken, videoData)
+status, _ := c.PollCameoStatus(accessToken, cameoID, 3*time.Second, 300*time.Second, nil)
+imageData, _ := c.DownloadCharacterImage(status.ProfileAssetURL)
+assetPointer, _ := c.UploadCharacterImage(accessToken, imageData)
+characterID, _ := c.FinalizeCharacter(accessToken, cameoID, "username", "显示名称", assetPointer)
+_ = c.SetCharacterPublic(accessToken, cameoID)
+
+// 删除角色
+_ = c.DeleteCharacter(accessToken, characterID)
+```
+
+### 视频发布
+
+```go
+// 发布视频获取去水印链接
+token, _ := c.GenerateSentinelToken(accessToken)
+postID, _ := c.PublishVideo(accessToken, token, "gen_xxx")
+// 去水印链接: https://sora.chatgpt.com/p/{postID}
+
+// 删除帖子
+_ = c.DeletePost(accessToken, postID)
+```
+
+### 账号信息查询
+
+```go
+// 查询配额
+balance, _ := c.GetCreditBalance(accessToken)
+fmt.Printf("剩余次数: %d\n", balance.RemainingCount)
+
+// 查询订阅
+sub, _ := c.GetSubscriptionInfo(accessToken)
+fmt.Printf("套餐: %s, 到期: %s\n", sub.PlanTitle, time.Unix(sub.EndTs, 0).Format("2006-01-02"))
+```
+
 ### 提示词优化
 
 ```go
@@ -149,9 +204,24 @@ c, _ := sora.New(proxy)
 | `GetDownloadURL(accessToken, taskID)` | 获取视频下载链接 |
 | `RefreshAccessToken(refreshToken, clientID)` | 刷新获取专用 access_token（去水印用） |
 | `GetWatermarkFreeURL(accessToken, videoID)` | 获取无水印下载链接 |
+| `GetCreditBalance(accessToken)` | 查询配额（剩余次数、速率限制） |
+| `GetSubscriptionInfo(accessToken)` | 查询订阅信息（套餐类型、到期时间） |
+| `CreateStoryboardTask(accessToken, sentinelToken, prompt, orientation, nFrames, mediaID, styleID)` | 创建分镜视频任务 |
+| `UploadCharacterVideo(accessToken, videoData)` | 上传角色视频，返回 cameoID |
+| `GetCameoStatus(accessToken, cameoID)` | 获取角色处理状态 |
+| `PollCameoStatus(accessToken, cameoID, interval, timeout, onProgress)` | 轮询角色处理状态 |
+| `DownloadCharacterImage(imageURL)` | 下载角色头像图片 |
+| `UploadCharacterImage(accessToken, imageData)` | 上传角色头像，返回 assetPointer |
+| `FinalizeCharacter(accessToken, cameoID, username, displayName, assetPointer)` | 定稿角色 |
+| `SetCharacterPublic(accessToken, cameoID)` | 设置角色为公开 |
+| `DeleteCharacter(accessToken, characterID)` | 删除角色 |
+| `PublishVideo(accessToken, sentinelToken, generationID)` | 发布视频帖子 |
+| `DeletePost(accessToken, postID)` | 删除已发布帖子 |
 | `QueryImageTaskOnce(accessToken, taskID, startTime)` | 单次查询图片任务状态（非阻塞） |
 | `QueryVideoTaskOnce(accessToken, taskID, startTime, maxProgress)` | 单次查询视频任务状态（非阻塞） |
 | `ExtractStyle(prompt)` | 从提示词提取 `{style}` 风格 |
+| `IsStoryboardPrompt(prompt)` | 检测是否为分镜格式 |
+| `FormatStoryboardPrompt(prompt)` | 转换分镜格式为 API 格式 |
 | `ExtractRemixID(text)` | 从 URL 提取 Remix 视频 ID |
 | `ExtractVideoID(text)` | 从分享链接提取视频 ID |
 | `ParseProxy(proxy)` | 解析代理字符串 |
@@ -178,7 +248,8 @@ c, _ := sora.New(proxy)
 提供基于 [Bubble Tea](https://github.com/charmbracelet/bubbletea) 的交互式 TUI 工具，支持全部功能：
 
 - 键盘导航（↑/↓ 菜单选择，Tab 切换字段，←/→ 选择选项）
-- 分组功能菜单（图片生成 / 视频生成 / 工具 / 设置）
+- 自动展示账号信息（配额、订阅类型、到期时间）
+- 分组功能菜单（图片生成 / 视频生成 / 角色管理 / 视频发布 / 工具 / 设置）
 - 动态参数表单（不同功能自动展示对应参数）
 - 任务进度条和状态显示
 
@@ -199,9 +270,12 @@ go build -o sora2api ./cmd/sora2api/
 ```
 go-sora2api/
 ├── sora/                    # 公开 SDK 包
-│   ├── client.go            # 客户端基础 + Sentinel Token
+│   ├── client.go            # 客户端基础 + 请求头封装 + Sentinel Token
 │   ├── task.go              # 任务创建（Upload/Image/Video/Remix/Enhance/Watermark）
-│   ├── poll.go              # 任务轮询 + 单次查询 + 下载链接
+│   ├── poll.go              # 任务轮询 + 单次查询 + 下载链接 + 配额/订阅查询
+│   ├── character.go         # 角色管理（上传/轮询/定稿/公开/删除）
+│   ├── storyboard.go        # 分镜视频（格式检测/转换/创建任务）
+│   ├── post.go              # 视频发布（发布/删除帖子）
 │   ├── style.go             # 风格提取 + ID 解析工具
 │   ├── pow.go               # PoW (SHA3-512) 算法
 │   └── util.go              # 代理解析等工具

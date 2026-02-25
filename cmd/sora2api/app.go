@@ -31,6 +31,11 @@ const (
 	funcEnhancePrompt
 	funcWatermarkFree
 	funcCreditBalance
+	funcCreateCharacter
+	funcDeleteCharacter
+	funcStoryboard
+	funcPublishVideo
+	funcDeletePost
 )
 
 // appModel 顶层模型

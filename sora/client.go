@@ -155,6 +155,53 @@ func (c *Client) doPostMultipart(url string, headers map[string]string, body *by
 	return result, nil
 }
 
+func (c *Client) doDelete(url string, headers map[string]string) error {
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 && resp.StatusCode != 204 {
+		buf, _ := readAll(resp.Body)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(buf), 200))
+	}
+
+	return nil
+}
+
+// baseHeaders 返回基础请求头（Authorization + User-Agent + Origin + Referer）
+func baseHeaders(accessToken string) map[string]string {
+	return map[string]string{
+		"Authorization": "Bearer " + accessToken,
+		"User-Agent":    mobileUserAgents[rand.Intn(len(mobileUserAgents))],
+		"Origin":        "https://sora.chatgpt.com",
+		"Referer":       "https://sora.chatgpt.com/",
+	}
+}
+
+// jsonHeaders 返回 JSON POST 请求头
+func jsonHeaders(accessToken string) map[string]string {
+	h := baseHeaders(accessToken)
+	h["Content-Type"] = "application/json"
+	return h
+}
+
+// sentinelHeaders 返回带 sentinel token 的请求头
+func sentinelHeaders(accessToken, sentinelToken string) map[string]string {
+	h := jsonHeaders(accessToken)
+	h["openai-sentinel-token"] = sentinelToken
+	return h
+}
+
 // GenerateSentinelToken 获取 sentinel token（含 PoW 计算）
 func (c *Client) GenerateSentinelToken(accessToken string) (string, error) {
 	reqID := generateUUID()

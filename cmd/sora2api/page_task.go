@@ -108,6 +108,24 @@ func (m taskModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.maxProgress = msg.progress.Percent
 		return m, m.progress.SetPercent(m.progressPct)
 
+	case charCreateStepMsg:
+		if msg.err != nil || msg.step == -1 {
+			// 错误：标记当前步骤失败并结束
+			err := msg.err
+			if err == nil {
+				err = fmt.Errorf("未知错误")
+			}
+			if len(m.steps) > 0 {
+				m.steps[len(m.steps)-1].done = true
+				m.steps[len(m.steps)-1].err = err
+			}
+			m.done = true
+			m.taskErr = err
+			return m, nil
+		}
+		// 触发下一步
+		return m, m.charCreateStep(msg)
+
 	case taskCompleteMsg:
 		m.done = true
 		m.resultURL = msg.resultURL
@@ -195,6 +213,16 @@ func (m taskModel) startExecution() tea.Cmd {
 		return m.executeWatermarkFree()
 	case funcCreditBalance:
 		return m.executeCreditBalance()
+	case funcCreateCharacter:
+		return m.executeCreateCharacter()
+	case funcDeleteCharacter:
+		return m.executeDeleteCharacter()
+	case funcStoryboard:
+		return m.executeStoryboard()
+	case funcPublishVideo:
+		return m.executePublishVideo()
+	case funcDeletePost:
+		return m.executeDeletePost()
 	}
 	return nil
 }
@@ -487,6 +515,231 @@ func (m taskModel) executeCreditBalance() tea.Cmd {
 		}
 
 		return taskCompleteMsg{resultURL: result}
+	}
+}
+
+// executeCreateCharacter 启动角色创建的第一步
+func (m taskModel) executeCreateCharacter() tea.Cmd {
+	return m.charCreateStep(charCreateStepMsg{step: 0})
+}
+
+// charCreateStep 角色创建状态机，每步发送进度并触发下一步
+func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
+	c := m.client
+	at := m.accessToken
+
+	switch msg.step {
+	case 0: // 读取并上传视频
+		return tea.Sequence(
+			func() tea.Msg { return taskStepMsg{step: "读取并上传角色视频"} },
+			func() tea.Msg {
+				videoPath := m.params["video_path"]
+				if videoPath == "" {
+					return charCreateStepMsg{step: -1, err: fmt.Errorf("视频路径不能为空")}
+				}
+				videoData, err := os.ReadFile(videoPath)
+				if err != nil {
+					return charCreateStepMsg{step: -1, err: fmt.Errorf("读取视频失败: %w", err)}
+				}
+				cameoID, err := c.UploadCharacterVideo(at, videoData)
+				if err != nil {
+					return charCreateStepMsg{step: -1, err: fmt.Errorf("上传角色视频失败: %w", err)}
+				}
+				return charCreateStepMsg{step: 1, cameoID: cameoID}
+			},
+		)
+
+	case 1: // 轮询角色处理状态
+		return tea.Sequence(
+			func() tea.Msg { return taskStepMsg{step: "读取并上传角色视频", done: true} },
+			func() tea.Msg { return taskStepMsg{step: "等待角色处理完成"} },
+			func() tea.Msg {
+				status, err := c.PollCameoStatus(at, msg.cameoID, 3*time.Second, 300*time.Second, nil)
+				if err != nil {
+					return charCreateStepMsg{step: -1, err: err}
+				}
+				if status.ProfileAssetURL == "" {
+					return charCreateStepMsg{step: -1, err: fmt.Errorf("角色处理完成但无头像 URL")}
+				}
+				return charCreateStepMsg{step: 2, cameoID: msg.cameoID, profileAssetURL: status.ProfileAssetURL}
+			},
+		)
+
+	case 2: // 下载角色头像（直接使用上一步传入的 URL，避免重复请求被 403）
+		return tea.Sequence(
+			func() tea.Msg { return taskStepMsg{step: "等待角色处理完成", done: true} },
+			func() tea.Msg { return taskStepMsg{step: "下载角色头像"} },
+			func() tea.Msg {
+				imageData, err := c.DownloadCharacterImage(msg.profileAssetURL)
+				if err != nil {
+					return charCreateStepMsg{step: -1, err: fmt.Errorf("下载角色图片失败: %w", err)}
+				}
+				return charCreateStepMsg{step: 3, cameoID: msg.cameoID, imageData: imageData}
+			},
+		)
+
+	case 3: // 上传角色头像
+		return tea.Sequence(
+			func() tea.Msg { return taskStepMsg{step: "下载角色头像", done: true} },
+			func() tea.Msg { return taskStepMsg{step: "上传角色头像"} },
+			func() tea.Msg {
+				assetPointer, err := c.UploadCharacterImage(at, msg.imageData)
+				if err != nil {
+					return charCreateStepMsg{step: -1, err: fmt.Errorf("上传角色头像失败: %w", err)}
+				}
+				return charCreateStepMsg{step: 4, cameoID: msg.cameoID, assetPointer: assetPointer}
+			},
+		)
+
+	case 4: // 定稿角色
+		return tea.Sequence(
+			func() tea.Msg { return taskStepMsg{step: "上传角色头像", done: true} },
+			func() tea.Msg { return taskStepMsg{step: "定稿角色"} },
+			func() tea.Msg {
+				displayName := m.params["display_name"]
+				if displayName == "" {
+					displayName = "My Character"
+				}
+				username := m.params["username"]
+				if username == "" {
+					username = "my_character"
+				}
+				characterID, err := c.FinalizeCharacter(at, msg.cameoID, username, displayName, msg.assetPointer)
+				if err != nil {
+					return charCreateStepMsg{step: -1, err: fmt.Errorf("定稿角色失败: %w", err)}
+				}
+				return charCreateStepMsg{step: 5, cameoID: msg.cameoID, characterID: characterID}
+			},
+		)
+
+	case 5: // 设置公开
+		return tea.Sequence(
+			func() tea.Msg { return taskStepMsg{step: "定稿角色", done: true} },
+			func() tea.Msg { return taskStepMsg{step: "设置角色公开"} },
+			func() tea.Msg {
+				_ = c.SetCharacterPublic(at, msg.cameoID)
+				displayName := m.params["display_name"]
+				if displayName == "" {
+					displayName = "My Character"
+				}
+				return charCreateStepMsg{step: 6, cameoID: msg.cameoID, characterID: msg.characterID}
+			},
+		)
+
+	case 6: // 完成
+		displayName := m.params["display_name"]
+		if displayName == "" {
+			displayName = "My Character"
+		}
+		return tea.Sequence(
+			func() tea.Msg { return taskStepMsg{step: "设置角色公开", done: true} },
+			func() tea.Msg {
+				return taskCompleteMsg{resultURL: fmt.Sprintf("角色创建成功\n  Character ID: %s\n  Cameo ID: %s\n  名称: %s", msg.characterID, msg.cameoID, displayName)}
+			},
+		)
+	}
+	return nil
+}
+
+func (m taskModel) executeDeleteCharacter() tea.Cmd {
+	return func() tea.Msg {
+		characterID := m.params["character_id"]
+		if characterID == "" {
+			return taskCompleteMsg{err: fmt.Errorf("character_id 不能为空")}
+		}
+
+		err := m.client.DeleteCharacter(m.accessToken, characterID)
+		if err != nil {
+			return taskCompleteMsg{err: fmt.Errorf("删除角色失败: %w", err)}
+		}
+
+		return taskCompleteMsg{resultURL: fmt.Sprintf("角色 %s 已删除", characterID)}
+	}
+}
+
+func (m taskModel) executeStoryboard() tea.Cmd {
+	return func() tea.Msg {
+		c := m.client
+		at := m.accessToken
+
+		prompt := m.params["prompt"]
+		if prompt == "" {
+			return taskCompleteMsg{err: fmt.Errorf("分镜提示词不能为空")}
+		}
+		orientation := m.params["orientation"]
+		if orientation == "" {
+			orientation = "landscape"
+		}
+		nFrames, _ := strconv.Atoi(m.params["n_frames"])
+		if nFrames == 0 {
+			nFrames = 450
+		}
+
+		// 获取 sentinel token
+		sentinelToken, err := c.GenerateSentinelToken(at)
+		if err != nil {
+			return taskCompleteMsg{err: fmt.Errorf("获取 sentinel token 失败: %w", err)}
+		}
+
+		// 创建分镜任务
+		taskID, err := c.CreateStoryboardTask(at, sentinelToken, prompt, orientation, nFrames, "", "")
+		if err != nil {
+			return taskCompleteMsg{err: fmt.Errorf("创建分镜任务失败: %w", err)}
+		}
+
+		// 轮询
+		err = c.PollVideoTask(at, taskID, 3*time.Second, 600*time.Second, nil)
+		if err != nil {
+			return taskCompleteMsg{err: err}
+		}
+
+		// 获取下载链接
+		url, err := c.GetDownloadURL(at, taskID)
+		if err != nil {
+			return taskCompleteMsg{err: err}
+		}
+
+		return taskCompleteMsg{resultURL: url}
+	}
+}
+
+func (m taskModel) executePublishVideo() tea.Cmd {
+	return func() tea.Msg {
+		c := m.client
+		at := m.accessToken
+
+		generationID := m.params["generation_id"]
+		if generationID == "" {
+			return taskCompleteMsg{err: fmt.Errorf("generation_id 不能为空")}
+		}
+
+		sentinelToken, err := c.GenerateSentinelToken(at)
+		if err != nil {
+			return taskCompleteMsg{err: fmt.Errorf("获取 sentinel token 失败: %w", err)}
+		}
+
+		postID, err := c.PublishVideo(at, sentinelToken, generationID)
+		if err != nil {
+			return taskCompleteMsg{err: fmt.Errorf("发布视频失败: %w", err)}
+		}
+
+		return taskCompleteMsg{resultURL: fmt.Sprintf("发布成功\n  Post ID: %s\n  去水印链接: https://sora.chatgpt.com/p/%s", postID, postID)}
+	}
+}
+
+func (m taskModel) executeDeletePost() tea.Cmd {
+	return func() tea.Msg {
+		postID := m.params["post_id"]
+		if postID == "" {
+			return taskCompleteMsg{err: fmt.Errorf("post_id 不能为空")}
+		}
+
+		err := m.client.DeletePost(m.accessToken, postID)
+		if err != nil {
+			return taskCompleteMsg{err: fmt.Errorf("删除帖子失败: %w", err)}
+		}
+
+		return taskCompleteMsg{resultURL: fmt.Sprintf("帖子 %s 已删除", postID)}
 	}
 }
 

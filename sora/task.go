@@ -14,14 +14,7 @@ import (
 // UploadImage 上传图片，返回 mediaID，用于图生图/图生视频
 // imageData 为图片二进制数据，filename 为文件名（如 "image.png"）
 func (c *Client) UploadImage(accessToken string, imageData []byte, filename string) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    userAgent,
-		"Origin":        "https://sora.chatgpt.com",
-		"Referer":       "https://sora.chatgpt.com/",
-	}
+	headers := baseHeaders(accessToken)
 
 	// 检测 MIME 类型
 	mimeType := "image/png"
@@ -83,16 +76,7 @@ func (c *Client) CreateVideoTaskWithImage(accessToken, sentinelToken, prompt, or
 // mediaID 为空表示文生视频，非空表示图生视频
 // styleID 为空表示无风格，可选值见 ValidStyles
 func (c *Client) CreateVideoTaskWithOptions(accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size, mediaID, styleID string) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-
-	headers := map[string]string{
-		"Authorization":         "Bearer " + accessToken,
-		"openai-sentinel-token": sentinelToken,
-		"Content-Type":          "application/json",
-		"User-Agent":            userAgent,
-		"Origin":                "https://sora.chatgpt.com",
-		"Referer":               "https://sora.chatgpt.com/",
-	}
+	headers := sentinelHeaders(accessToken, sentinelToken)
 
 	inpaintItems := []interface{}{}
 	if mediaID != "" {
@@ -137,16 +121,7 @@ func (c *Client) CreateImageTask(accessToken, sentinelToken, prompt string, widt
 // CreateImageTaskWithImage 创建图生图任务
 // mediaID 为空表示文生图，非空表示图生图
 func (c *Client) CreateImageTaskWithImage(accessToken, sentinelToken, prompt string, width, height int, mediaID string) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-
-	headers := map[string]string{
-		"Authorization":         "Bearer " + accessToken,
-		"openai-sentinel-token": sentinelToken,
-		"Content-Type":          "application/json",
-		"User-Agent":            userAgent,
-		"Origin":                "https://sora.chatgpt.com",
-		"Referer":               "https://sora.chatgpt.com/",
-	}
+	headers := sentinelHeaders(accessToken, sentinelToken)
 
 	operation := "simple_compose"
 	inpaintItems := []interface{}{}
@@ -188,16 +163,7 @@ func (c *Client) CreateImageTaskWithImage(accessToken, sentinelToken, prompt str
 // RemixVideo 基于已有视频创建 Remix 任务
 // remixTargetID 为 Sora 分享链接中的视频 ID，格式: s_[hex32]
 func (c *Client) RemixVideo(accessToken, sentinelToken, remixTargetID, prompt, orientation string, nFrames int, styleID string) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-
-	headers := map[string]string{
-		"Authorization":         "Bearer " + accessToken,
-		"openai-sentinel-token": sentinelToken,
-		"Content-Type":          "application/json",
-		"User-Agent":            userAgent,
-		"Origin":                "https://sora.chatgpt.com",
-		"Referer":               "https://sora.chatgpt.com/",
-	}
+	headers := sentinelHeaders(accessToken, sentinelToken)
 
 	payload := map[string]interface{}{
 		"kind":               "video",
@@ -229,13 +195,7 @@ func (c *Client) RemixVideo(accessToken, sentinelToken, remixTargetID, prompt, o
 // expansionLevel: "medium" 或 "long"
 // durationSec: 5、10、15 或 25
 func (c *Client) EnhancePrompt(accessToken, prompt, expansionLevel string, durationSec int) (string, error) {
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
-
-	headers := map[string]string{
-		"Authorization": "Bearer " + accessToken,
-		"Content-Type":  "application/json",
-		"User-Agent":    userAgent,
-	}
+	headers := jsonHeaders(accessToken)
 
 	payload := map[string]interface{}{
 		"prompt":          prompt,

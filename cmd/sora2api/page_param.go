@@ -80,6 +80,30 @@ func buildFields(ft funcType) []paramField {
 			textField("client_id", "Client ID (留空使用默认)", ""),
 			textField("video_id", "视频 ID 或分享链接", "https://sora.chatgpt.com/p/s_xxx"),
 		}
+	case funcCreateCharacter:
+		return []paramField{
+			textField("video_path", "角色视频路径", "/path/to/video.mp4"),
+			textField("display_name", "角色名称", "我的角色"),
+			textField("username", "角色用户名", "my_character"),
+		}
+	case funcDeleteCharacter:
+		return []paramField{
+			textField("character_id", "Character ID", ""),
+		}
+	case funcStoryboard:
+		return []paramField{
+			textField("prompt", "分镜提示词", "[5.0s]场景1 [5.0s]场景2"),
+			selectField("orientation", "视频方向", []string{"landscape", "portrait"}, []string{"横向 (landscape)", "纵向 (portrait)"}),
+			selectField("n_frames", "视频时长", []string{"150", "300", "450", "750"}, []string{"5 秒", "10 秒", "15 秒", "25 秒"}),
+		}
+	case funcPublishVideo:
+		return []paramField{
+			textField("generation_id", "Generation ID", "gen_xxx"),
+		}
+	case funcDeletePost:
+		return []paramField{
+			textField("post_id", "帖子 ID", "s_xxx"),
+		}
 	}
 	return nil
 }
@@ -296,6 +320,16 @@ func funcName(ft funcType) string {
 		return "去水印链接"
 	case funcCreditBalance:
 		return "查询可用次数"
+	case funcCreateCharacter:
+		return "创建角色"
+	case funcDeleteCharacter:
+		return "删除角色"
+	case funcStoryboard:
+		return "分镜任务"
+	case funcPublishVideo:
+		return "发布去水印"
+	case funcDeletePost:
+		return "删除帖子"
 	}
 	return ""
 }

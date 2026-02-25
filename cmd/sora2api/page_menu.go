@@ -56,6 +56,21 @@ func newMenuModel() menuModel {
 			},
 		},
 		{
+			title: "角色管理",
+			items: []menuItem{
+				{name: "创建角色", desc: "上传视频自动创建角色（全流程）", funcType: funcCreateCharacter},
+				{name: "删除角色", desc: "输入 character_id 删除角色", funcType: funcDeleteCharacter},
+			},
+		},
+		{
+			title: "视频发布",
+			items: []menuItem{
+				{name: "分镜任务", desc: "使用分镜格式生成视频", funcType: funcStoryboard},
+				{name: "发布去水印", desc: "发布视频获取去水印链接", funcType: funcPublishVideo},
+				{name: "删除帖子", desc: "删除已发布的帖子", funcType: funcDeletePost},
+			},
+		},
+		{
 			title: "工具",
 			items: []menuItem{
 				{name: "提示词优化", desc: "AI 增强你的提示词", funcType: funcEnhancePrompt},
