@@ -2,9 +2,9 @@ package sora
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"mime/multipart"
 	"net/textproto"
 	"time"
@@ -21,8 +21,8 @@ type CameoStatus struct {
 
 // UploadCharacterVideo 上传角色视频，返回 cameoID
 // videoData 为视频二进制数据（mp4 格式），timestamps 默认 "0,3"
-func (c *Client) UploadCharacterVideo(accessToken string, videoData []byte) (string, error) {
-	headers := baseHeaders(accessToken)
+func (c *Client) UploadCharacterVideo(ctx context.Context, accessToken string, videoData []byte) (string, error) {
+	headers := c.baseHeaders(accessToken)
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -45,7 +45,7 @@ func (c *Client) UploadCharacterVideo(accessToken string, videoData []byte) (str
 	}
 	writer.Close()
 
-	resp, err := c.doPostMultipart(soraBaseURL+"/characters/upload", headers, &buf, writer.FormDataContentType())
+	resp, err := c.doPostMultipart(ctx, soraBaseURL+"/characters/upload", headers, &buf, writer.FormDataContentType())
 	if err != nil {
 		return "", fmt.Errorf("上传角色视频失败: %w", err)
 	}
@@ -59,10 +59,10 @@ func (c *Client) UploadCharacterVideo(accessToken string, videoData []byte) (str
 }
 
 // GetCameoStatus 获取角色处理状态
-func (c *Client) GetCameoStatus(accessToken, cameoID string) (CameoStatus, error) {
-	headers := baseHeaders(accessToken)
+func (c *Client) GetCameoStatus(ctx context.Context, accessToken, cameoID string) (CameoStatus, error) {
+	headers := c.baseHeaders(accessToken)
 
-	body, err := c.doGet(soraBaseURL+"/project_y/cameos/in_progress/"+cameoID, headers)
+	body, err := c.doGet(ctx, soraBaseURL+"/project_y/cameos/in_progress/"+cameoID, headers)
 	if err != nil {
 		return CameoStatus{}, fmt.Errorf("获取角色状态失败: %w", err)
 	}
@@ -84,21 +84,28 @@ func (c *Client) GetCameoStatus(accessToken, cameoID string) (CameoStatus, error
 }
 
 // PollCameoStatus 轮询角色处理状态直到完成
-func (c *Client) PollCameoStatus(accessToken, cameoID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) (CameoStatus, error) {
+func (c *Client) PollCameoStatus(ctx context.Context, accessToken, cameoID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) (CameoStatus, error) {
 	startTime := time.Now()
-	time.Sleep(2 * time.Second)
+	if err := sleepWithContext(ctx, 2*time.Second); err != nil {
+		return CameoStatus{}, err
+	}
 
+	failCount := 0
 	for {
 		elapsed := time.Since(startTime)
 		if elapsed > pollTimeout {
 			return CameoStatus{}, fmt.Errorf("轮询超时 (%v)", pollTimeout)
 		}
 
-		status, err := c.GetCameoStatus(accessToken, cameoID)
+		status, err := c.GetCameoStatus(ctx, accessToken, cameoID)
 		if err != nil {
-			time.Sleep(pollInterval)
+			failCount++
+			if err := sleepWithContext(ctx, backoff(pollInterval, failCount, 30*time.Second)); err != nil {
+				return CameoStatus{}, err
+			}
 			continue
 		}
+		failCount = 0
 
 		if onProgress != nil {
 			onProgress(Progress{
@@ -116,18 +123,20 @@ func (c *Client) PollCameoStatus(accessToken, cameoID string, pollInterval, poll
 			return status, nil
 		}
 
-		time.Sleep(pollInterval)
+		if err := sleepWithContext(ctx, pollInterval); err != nil {
+			return CameoStatus{}, err
+		}
 	}
 }
 
 // DownloadCharacterImage 下载角色头像图片
-func (c *Client) DownloadCharacterImage(imageURL string) ([]byte, error) {
-	userAgent := desktopUserAgents[rand.Intn(len(desktopUserAgents))]
+func (c *Client) DownloadCharacterImage(ctx context.Context, imageURL string) ([]byte, error) {
+	userAgent := desktopUserAgents[c.randIntn(len(desktopUserAgents))]
 	headers := map[string]string{
 		"User-Agent": userAgent,
 	}
 
-	body, err := c.doGet(imageURL, headers)
+	body, err := c.doGet(ctx, imageURL, headers)
 	if err != nil {
 		return nil, fmt.Errorf("下载角色图片失败: %w", err)
 	}
@@ -137,8 +146,8 @@ func (c *Client) DownloadCharacterImage(imageURL string) ([]byte, error) {
 
 // UploadCharacterImage 上传角色头像图片，返回 assetPointer
 // imageData 为图片二进制数据（webp 格式）
-func (c *Client) UploadCharacterImage(accessToken string, imageData []byte) (string, error) {
-	headers := baseHeaders(accessToken)
+func (c *Client) UploadCharacterImage(ctx context.Context, accessToken string, imageData []byte) (string, error) {
+	headers := c.baseHeaders(accessToken)
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -161,7 +170,7 @@ func (c *Client) UploadCharacterImage(accessToken string, imageData []byte) (str
 	}
 	writer.Close()
 
-	resp, err := c.doPostMultipart(soraBaseURL+"/project_y/file/upload", headers, &buf, writer.FormDataContentType())
+	resp, err := c.doPostMultipart(ctx, soraBaseURL+"/project_y/file/upload", headers, &buf, writer.FormDataContentType())
 	if err != nil {
 		return "", fmt.Errorf("上传角色头像失败: %w", err)
 	}
@@ -175,8 +184,8 @@ func (c *Client) UploadCharacterImage(accessToken string, imageData []byte) (str
 }
 
 // FinalizeCharacter 定稿角色，返回 characterID
-func (c *Client) FinalizeCharacter(accessToken, cameoID, username, displayName, profileAssetPointer string) (string, error) {
-	headers := jsonHeaders(accessToken)
+func (c *Client) FinalizeCharacter(ctx context.Context, accessToken, cameoID, username, displayName, profileAssetPointer string) (string, error) {
+	headers := c.jsonHeaders(accessToken)
 
 	payload := map[string]interface{}{
 		"cameo_id":               cameoID,
@@ -187,7 +196,7 @@ func (c *Client) FinalizeCharacter(accessToken, cameoID, username, displayName, 
 		"safety_instruction_set": nil,
 	}
 
-	resp, err := c.doPost(soraBaseURL+"/characters/finalize", headers, payload)
+	resp, err := c.doPost(ctx, soraBaseURL+"/characters/finalize", headers, payload)
 	if err != nil {
 		return "", fmt.Errorf("定稿角色失败: %w", err)
 	}
@@ -206,14 +215,14 @@ func (c *Client) FinalizeCharacter(accessToken, cameoID, username, displayName, 
 }
 
 // SetCharacterPublic 设置角色为公开
-func (c *Client) SetCharacterPublic(accessToken, cameoID string) error {
-	headers := jsonHeaders(accessToken)
+func (c *Client) SetCharacterPublic(ctx context.Context, accessToken, cameoID string) error {
+	headers := c.jsonHeaders(accessToken)
 
 	payload := map[string]interface{}{
 		"visibility": "public",
 	}
 
-	_, err := c.doPost(soraBaseURL+"/project_y/cameos/by_id/"+cameoID+"/update_v2", headers, payload)
+	_, err := c.doPost(ctx, soraBaseURL+"/project_y/cameos/by_id/"+cameoID+"/update_v2", headers, payload)
 	if err != nil {
 		return fmt.Errorf("设置角色公开失败: %w", err)
 	}
@@ -222,6 +231,6 @@ func (c *Client) SetCharacterPublic(accessToken, cameoID string) error {
 }
 
 // DeleteCharacter 删除角色
-func (c *Client) DeleteCharacter(accessToken, characterID string) error {
-	return c.doDelete(soraBaseURL+"/project_y/characters/"+characterID, baseHeaders(accessToken))
+func (c *Client) DeleteCharacter(ctx context.Context, accessToken, characterID string) error {
+	return c.doDelete(ctx, soraBaseURL+"/project_y/characters/"+characterID, c.baseHeaders(accessToken))
 }

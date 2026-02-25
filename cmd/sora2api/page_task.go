@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -229,6 +230,7 @@ func (m taskModel) startExecution() tea.Cmd {
 
 func (m taskModel) executeImageTask() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		c := m.client
 		at := m.accessToken
 		prompt := m.params["prompt"]
@@ -249,8 +251,6 @@ func (m taskModel) executeImageTask() tea.Cmd {
 		// 上传图片（图生图）
 		var mediaID string
 		if m.funcType == funcImageToImage {
-			p := tea.NewProgram(nil) // 占位，实际不使用
-			_ = p
 			imagePath := m.params["image_path"]
 			if imagePath == "" {
 				return taskCompleteMsg{err: fmt.Errorf("图片路径不能为空")}
@@ -262,7 +262,7 @@ func (m taskModel) executeImageTask() tea.Cmd {
 			parts := strings.Split(strings.ReplaceAll(imagePath, "\\", "/"), "/")
 			filename := parts[len(parts)-1]
 
-			id, err := c.UploadImage(at, imageData, filename)
+			id, err := c.UploadImage(ctx, at, imageData, filename)
 			if err != nil {
 				return taskCompleteMsg{err: fmt.Errorf("上传图片失败: %w", err)}
 			}
@@ -270,19 +270,19 @@ func (m taskModel) executeImageTask() tea.Cmd {
 		}
 
 		// 获取 sentinel token
-		sentinelToken, err := c.GenerateSentinelToken(at)
+		sentinelToken, err := c.GenerateSentinelToken(ctx, at)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("获取 sentinel token 失败: %w", err)}
 		}
 
 		// 创建任务
-		taskID, err := c.CreateImageTaskWithImage(at, sentinelToken, prompt, width, height, mediaID)
+		taskID, err := c.CreateImageTaskWithImage(ctx, at, sentinelToken, prompt, width, height, mediaID)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("创建任务失败: %w", err)}
 		}
 
 		// 轮询
-		imageURL, err := c.PollImageTask(at, taskID, 3*time.Second, 600*time.Second, nil)
+		imageURL, err := c.PollImageTask(ctx, at, taskID, 3*time.Second, 600*time.Second, nil)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
@@ -293,6 +293,7 @@ func (m taskModel) executeImageTask() tea.Cmd {
 
 func (m taskModel) executeVideoTask() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		c := m.client
 		at := m.accessToken
 		prompt := m.params["prompt"]
@@ -337,7 +338,7 @@ func (m taskModel) executeVideoTask() tea.Cmd {
 			parts := strings.Split(strings.ReplaceAll(imagePath, "\\", "/"), "/")
 			filename := parts[len(parts)-1]
 
-			id, err := c.UploadImage(at, imageData, filename)
+			id, err := c.UploadImage(ctx, at, imageData, filename)
 			if err != nil {
 				return taskCompleteMsg{err: fmt.Errorf("上传图片失败: %w", err)}
 			}
@@ -345,25 +346,25 @@ func (m taskModel) executeVideoTask() tea.Cmd {
 		}
 
 		// 获取 sentinel token
-		sentinelToken, err := c.GenerateSentinelToken(at)
+		sentinelToken, err := c.GenerateSentinelToken(ctx, at)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("获取 sentinel token 失败: %w", err)}
 		}
 
 		// 创建任务
-		taskID, err := c.CreateVideoTaskWithOptions(at, sentinelToken, prompt, orientation, nFrames, model, size, mediaID, styleID)
+		taskID, err := c.CreateVideoTaskWithOptions(ctx, at, sentinelToken, prompt, orientation, nFrames, model, size, mediaID, styleID)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("创建任务失败: %w", err)}
 		}
 
 		// 轮询
-		err = c.PollVideoTask(at, taskID, 3*time.Second, 600*time.Second, nil)
+		err = c.PollVideoTask(ctx, at, taskID, 3*time.Second, 600*time.Second, nil)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
 
 		// 获取下载链接
-		url, err := c.GetDownloadURL(at, taskID)
+		url, err := c.GetDownloadURL(ctx, at, taskID)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
@@ -374,6 +375,7 @@ func (m taskModel) executeVideoTask() tea.Cmd {
 
 func (m taskModel) executeRemixTask() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		c := m.client
 		at := m.accessToken
 		remixInput := m.params["remix_id"]
@@ -401,22 +403,22 @@ func (m taskModel) executeRemixTask() tea.Cmd {
 			styleID = extractedStyle
 		}
 
-		sentinelToken, err := c.GenerateSentinelToken(at)
+		sentinelToken, err := c.GenerateSentinelToken(ctx, at)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("获取 sentinel token 失败: %w", err)}
 		}
 
-		taskID, err := c.RemixVideo(at, sentinelToken, remixID, prompt, orientation, nFrames, styleID)
+		taskID, err := c.RemixVideo(ctx, at, sentinelToken, remixID, prompt, orientation, nFrames, styleID)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("创建 Remix 任务失败: %w", err)}
 		}
 
-		err = c.PollVideoTask(at, taskID, 3*time.Second, 600*time.Second, nil)
+		err = c.PollVideoTask(ctx, at, taskID, 3*time.Second, 600*time.Second, nil)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
 
-		url, err := c.GetDownloadURL(at, taskID)
+		url, err := c.GetDownloadURL(ctx, at, taskID)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
@@ -427,6 +429,7 @@ func (m taskModel) executeRemixTask() tea.Cmd {
 
 func (m taskModel) executeEnhancePrompt() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		prompt := m.params["prompt"]
 		if prompt == "" {
 			return taskCompleteMsg{err: fmt.Errorf("提示词不能为空")}
@@ -441,7 +444,7 @@ func (m taskModel) executeEnhancePrompt() tea.Cmd {
 			duration = 10
 		}
 
-		enhanced, err := m.client.EnhancePrompt(m.accessToken, prompt, expansion, duration)
+		enhanced, err := m.client.EnhancePrompt(ctx, m.accessToken, prompt, expansion, duration)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
@@ -452,6 +455,7 @@ func (m taskModel) executeEnhancePrompt() tea.Cmd {
 
 func (m taskModel) executeWatermarkFree() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		refreshToken := m.params["refresh_token"]
 		if refreshToken == "" {
 			return taskCompleteMsg{err: fmt.Errorf("refresh_token 不能为空")}
@@ -462,12 +466,12 @@ func (m taskModel) executeWatermarkFree() tea.Cmd {
 			return taskCompleteMsg{err: fmt.Errorf("视频 ID 不能为空")}
 		}
 
-		soraToken, _, err := m.client.RefreshAccessToken(refreshToken, clientID)
+		soraToken, _, err := m.client.RefreshAccessToken(ctx, refreshToken, clientID)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("刷新 token 失败: %w", err)}
 		}
 
-		url, err := m.client.GetWatermarkFreeURL(soraToken, videoID)
+		url, err := m.client.GetWatermarkFreeURL(ctx, soraToken, videoID)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
@@ -478,7 +482,8 @@ func (m taskModel) executeWatermarkFree() tea.Cmd {
 
 func (m taskModel) executeCreditBalance() tea.Cmd {
 	return func() tea.Msg {
-		balance, err := m.client.GetCreditBalance(m.accessToken)
+		ctx := context.Background()
+		balance, err := m.client.GetCreditBalance(ctx, m.accessToken)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
@@ -496,7 +501,7 @@ func (m taskModel) executeCreditBalance() tea.Cmd {
 		}
 
 		// 查询订阅信息
-		sub, err := m.client.GetSubscriptionInfo(m.accessToken)
+		sub, err := m.client.GetSubscriptionInfo(ctx, m.accessToken)
 		if err == nil {
 			result += "\n"
 			if sub.PlanTitle != "" {
@@ -533,6 +538,7 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 		return tea.Sequence(
 			func() tea.Msg { return taskStepMsg{step: "读取并上传角色视频"} },
 			func() tea.Msg {
+				ctx := context.Background()
 				videoPath := m.params["video_path"]
 				if videoPath == "" {
 					return charCreateStepMsg{step: -1, err: fmt.Errorf("视频路径不能为空")}
@@ -541,7 +547,7 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 				if err != nil {
 					return charCreateStepMsg{step: -1, err: fmt.Errorf("读取视频失败: %w", err)}
 				}
-				cameoID, err := c.UploadCharacterVideo(at, videoData)
+				cameoID, err := c.UploadCharacterVideo(ctx, at, videoData)
 				if err != nil {
 					return charCreateStepMsg{step: -1, err: fmt.Errorf("上传角色视频失败: %w", err)}
 				}
@@ -554,7 +560,8 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 			func() tea.Msg { return taskStepMsg{step: "读取并上传角色视频", done: true} },
 			func() tea.Msg { return taskStepMsg{step: "等待角色处理完成"} },
 			func() tea.Msg {
-				status, err := c.PollCameoStatus(at, msg.cameoID, 3*time.Second, 300*time.Second, nil)
+				ctx := context.Background()
+				status, err := c.PollCameoStatus(ctx, at, msg.cameoID, 3*time.Second, 300*time.Second, nil)
 				if err != nil {
 					return charCreateStepMsg{step: -1, err: err}
 				}
@@ -570,7 +577,8 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 			func() tea.Msg { return taskStepMsg{step: "等待角色处理完成", done: true} },
 			func() tea.Msg { return taskStepMsg{step: "下载角色头像"} },
 			func() tea.Msg {
-				imageData, err := c.DownloadCharacterImage(msg.profileAssetURL)
+				ctx := context.Background()
+				imageData, err := c.DownloadCharacterImage(ctx, msg.profileAssetURL)
 				if err != nil {
 					return charCreateStepMsg{step: -1, err: fmt.Errorf("下载角色图片失败: %w", err)}
 				}
@@ -583,7 +591,8 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 			func() tea.Msg { return taskStepMsg{step: "下载角色头像", done: true} },
 			func() tea.Msg { return taskStepMsg{step: "上传角色头像"} },
 			func() tea.Msg {
-				assetPointer, err := c.UploadCharacterImage(at, msg.imageData)
+				ctx := context.Background()
+				assetPointer, err := c.UploadCharacterImage(ctx, at, msg.imageData)
 				if err != nil {
 					return charCreateStepMsg{step: -1, err: fmt.Errorf("上传角色头像失败: %w", err)}
 				}
@@ -596,6 +605,7 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 			func() tea.Msg { return taskStepMsg{step: "上传角色头像", done: true} },
 			func() tea.Msg { return taskStepMsg{step: "定稿角色"} },
 			func() tea.Msg {
+				ctx := context.Background()
 				displayName := m.params["display_name"]
 				if displayName == "" {
 					displayName = "My Character"
@@ -604,7 +614,7 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 				if username == "" {
 					username = "my_character"
 				}
-				characterID, err := c.FinalizeCharacter(at, msg.cameoID, username, displayName, msg.assetPointer)
+				characterID, err := c.FinalizeCharacter(ctx, at, msg.cameoID, username, displayName, msg.assetPointer)
 				if err != nil {
 					return charCreateStepMsg{step: -1, err: fmt.Errorf("定稿角色失败: %w", err)}
 				}
@@ -617,7 +627,8 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 			func() tea.Msg { return taskStepMsg{step: "定稿角色", done: true} },
 			func() tea.Msg { return taskStepMsg{step: "设置角色公开"} },
 			func() tea.Msg {
-				_ = c.SetCharacterPublic(at, msg.cameoID)
+				ctx := context.Background()
+				_ = c.SetCharacterPublic(ctx, at, msg.cameoID)
 				displayName := m.params["display_name"]
 				if displayName == "" {
 					displayName = "My Character"
@@ -643,12 +654,13 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 
 func (m taskModel) executeDeleteCharacter() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		characterID := m.params["character_id"]
 		if characterID == "" {
 			return taskCompleteMsg{err: fmt.Errorf("character_id 不能为空")}
 		}
 
-		err := m.client.DeleteCharacter(m.accessToken, characterID)
+		err := m.client.DeleteCharacter(ctx, m.accessToken, characterID)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("删除角色失败: %w", err)}
 		}
@@ -659,6 +671,7 @@ func (m taskModel) executeDeleteCharacter() tea.Cmd {
 
 func (m taskModel) executeStoryboard() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		c := m.client
 		at := m.accessToken
 
@@ -676,25 +689,25 @@ func (m taskModel) executeStoryboard() tea.Cmd {
 		}
 
 		// 获取 sentinel token
-		sentinelToken, err := c.GenerateSentinelToken(at)
+		sentinelToken, err := c.GenerateSentinelToken(ctx, at)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("获取 sentinel token 失败: %w", err)}
 		}
 
 		// 创建分镜任务
-		taskID, err := c.CreateStoryboardTask(at, sentinelToken, prompt, orientation, nFrames, "", "")
+		taskID, err := c.CreateStoryboardTask(ctx, at, sentinelToken, prompt, orientation, nFrames, "", "")
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("创建分镜任务失败: %w", err)}
 		}
 
 		// 轮询
-		err = c.PollVideoTask(at, taskID, 3*time.Second, 600*time.Second, nil)
+		err = c.PollVideoTask(ctx, at, taskID, 3*time.Second, 600*time.Second, nil)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
 
 		// 获取下载链接
-		url, err := c.GetDownloadURL(at, taskID)
+		url, err := c.GetDownloadURL(ctx, at, taskID)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
@@ -705,6 +718,7 @@ func (m taskModel) executeStoryboard() tea.Cmd {
 
 func (m taskModel) executePublishVideo() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		c := m.client
 		at := m.accessToken
 
@@ -713,12 +727,12 @@ func (m taskModel) executePublishVideo() tea.Cmd {
 			return taskCompleteMsg{err: fmt.Errorf("generation_id 不能为空")}
 		}
 
-		sentinelToken, err := c.GenerateSentinelToken(at)
+		sentinelToken, err := c.GenerateSentinelToken(ctx, at)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("获取 sentinel token 失败: %w", err)}
 		}
 
-		postID, err := c.PublishVideo(at, sentinelToken, generationID)
+		postID, err := c.PublishVideo(ctx, at, sentinelToken, generationID)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("发布视频失败: %w", err)}
 		}
@@ -729,12 +743,13 @@ func (m taskModel) executePublishVideo() tea.Cmd {
 
 func (m taskModel) executeDeletePost() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		postID := m.params["post_id"]
 		if postID == "" {
 			return taskCompleteMsg{err: fmt.Errorf("post_id 不能为空")}
 		}
 
-		err := m.client.DeletePost(m.accessToken, postID)
+		err := m.client.DeletePost(ctx, m.accessToken, postID)
 		if err != nil {
 			return taskCompleteMsg{err: fmt.Errorf("删除帖子失败: %w", err)}
 		}
@@ -747,4 +762,3 @@ func (m taskModel) pollOnce() tea.Cmd {
 	// 此方法预留给未来的非阻塞轮询模式使用
 	return nil
 }
-

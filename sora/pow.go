@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"time"
 
@@ -57,29 +56,29 @@ func getParseTime() string {
 	return now.Format("Mon Jan 02 2006 15:04:05") + " GMT-0500 (Eastern Standard Time)"
 }
 
-// getConfig 构造 18 元素的浏览器指纹数组
-func getConfig(userAgent string) []interface{} {
+// getConfig 构造 18 元素的浏览器指纹数组（使用 Client 实例的 rand）
+func (c *Client) getConfig(userAgent string) []interface{} {
 	perfCounter := float64(time.Now().UnixNano()%1e12) / 1e6
 	timeMs := float64(time.Now().UnixMilli())
 
 	return []interface{}{
-		screens[rand.Intn(len(screens))],
+		screens[c.randIntn(len(screens))],
 		getParseTime(),
 		4294705152,
 		0,
 		userAgent,
-		scripts[rand.Intn(len(scripts))],
-		dpl[rand.Intn(len(dpl))],
+		scripts[c.randIntn(len(scripts))],
+		dpl[c.randIntn(len(dpl))],
 		"en-US",
 		"en-US,es-US,en,es",
 		0,
-		navigatorKeys[rand.Intn(len(navigatorKeys))],
-		documentKeys[rand.Intn(len(documentKeys))],
-		windowKeys[rand.Intn(len(windowKeys))],
+		navigatorKeys[c.randIntn(len(navigatorKeys))],
+		documentKeys[c.randIntn(len(documentKeys))],
+		windowKeys[c.randIntn(len(windowKeys))],
 		perfCounter,
-		generateUUID(),
+		c.generateUUID(),
 		"",
-		cores[rand.Intn(len(cores))],
+		cores[c.randIntn(len(cores))],
 		timeMs - perfCounter,
 	}
 }
@@ -89,7 +88,7 @@ func compactJSON(v interface{}) []byte {
 	return b
 }
 
-// solve 执行 PoW 计算：SHA3-512 哈希碰撞
+// solve 执行 PoW 计算：SHA3-512 哈希碰撞（已优化缓冲区复用）
 func solve(seed, difficulty string, configList []interface{}) (string, bool) {
 	diffBytes, _ := hex.DecodeString(difficulty)
 	diffLen := len(diffBytes)
@@ -109,28 +108,33 @@ func solve(seed, difficulty string, configList []interface{}) (string, bool) {
 	staticPart3 = append(staticPart3, ',')
 	staticPart3 = append(staticPart3, part3JSON[1:]...)
 
+	// 预分配缓冲区，循环内复用
+	maxJSONLen := len(staticPart1) + 10 + len(staticPart2) + 10 + len(staticPart3)
+	jsonBuf := make([]byte, 0, maxJSONLen)
+	b64Buf := make([]byte, base64.StdEncoding.EncodedLen(maxJSONLen))
+
 	for i := 0; i < maxIteration; i++ {
-		dynamicI := []byte(strconv.Itoa(i))
-		dynamicJ := []byte(strconv.Itoa(i >> 1))
+		// 复用 jsonBuf，直接 AppendInt 避免中间分配
+		jsonBuf = jsonBuf[:0]
+		jsonBuf = append(jsonBuf, staticPart1...)
+		jsonBuf = strconv.AppendInt(jsonBuf, int64(i), 10)
+		jsonBuf = append(jsonBuf, staticPart2...)
+		jsonBuf = strconv.AppendInt(jsonBuf, int64(i>>1), 10)
+		jsonBuf = append(jsonBuf, staticPart3...)
 
-		totalLen := len(staticPart1) + len(dynamicI) + len(staticPart2) + len(dynamicJ) + len(staticPart3)
-		finalJSON := make([]byte, 0, totalLen)
-		finalJSON = append(finalJSON, staticPart1...)
-		finalJSON = append(finalJSON, dynamicI...)
-		finalJSON = append(finalJSON, staticPart2...)
-		finalJSON = append(finalJSON, dynamicJ...)
-		finalJSON = append(finalJSON, staticPart3...)
-
-		b64 := make([]byte, base64.StdEncoding.EncodedLen(len(finalJSON)))
-		base64.StdEncoding.Encode(b64, finalJSON)
+		b64Len := base64.StdEncoding.EncodedLen(len(jsonBuf))
+		if b64Len > len(b64Buf) {
+			b64Buf = make([]byte, b64Len)
+		}
+		base64.StdEncoding.Encode(b64Buf[:b64Len], jsonBuf)
 
 		h := sha3.New512()
 		h.Write(seedBytes)
-		h.Write(b64)
+		h.Write(b64Buf[:b64Len])
 		hash := h.Sum(nil)
 
 		if bytesLessOrEqual(hash[:diffLen], diffBytes) {
-			return string(b64), true
+			return string(b64Buf[:b64Len]), true
 		}
 	}
 
@@ -156,16 +160,16 @@ func mustJSONStr(s string) string {
 	return string(b)
 }
 
-// getPowToken 生成初始 PoW token
-func getPowToken(userAgent string) string {
-	configList := getConfig(userAgent)
-	seed := strconv.FormatFloat(rand.Float64(), 'f', -1, 64)
+// getPowToken 生成初始 PoW token（使用 Client 实例的 rand）
+func (c *Client) getPowToken(userAgent string) string {
+	configList := c.getConfig(userAgent)
+	seed := strconv.FormatFloat(c.randFloat64(), 'f', -1, 64)
 	solution, _ := solve(seed, "0fffff", configList)
 	return "gAAAAAC" + solution
 }
 
 // buildSentinelToken 从 sentinel/req 响应构建最终的 sentinel token
-func buildSentinelToken(flow, reqID, powToken string, resp map[string]interface{}, userAgent string) string {
+func (c *Client) buildSentinelToken(flow, reqID, powToken string, resp map[string]interface{}, userAgent string) string {
 	finalPowToken := powToken
 
 	if proofofwork, ok := resp["proofofwork"].(map[string]interface{}); ok {
@@ -173,7 +177,7 @@ func buildSentinelToken(flow, reqID, powToken string, resp map[string]interface{
 			seed, _ := proofofwork["seed"].(string)
 			difficulty, _ := proofofwork["difficulty"].(string)
 			if seed != "" && difficulty != "" {
-				configList := getConfig(userAgent)
+				configList := c.getConfig(userAgent)
 				solution, _ := solve(seed, difficulty, configList)
 				finalPowToken = "gAAAAAB" + solution
 			}

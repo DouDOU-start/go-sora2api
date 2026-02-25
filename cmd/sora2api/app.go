@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -198,17 +199,18 @@ func (m appModel) View() string {
 // fetchAccountInfo 异步获取账号配额和订阅信息
 func (m appModel) fetchAccountInfo() tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		var balance *sora.CreditBalance
 		var sub *sora.SubscriptionInfo
 
 		// 获取配额
-		b, err := m.client.GetCreditBalance(m.accessToken)
+		b, err := m.client.GetCreditBalance(ctx, m.accessToken)
 		if err == nil {
 			balance = &b
 		}
 
 		// 获取订阅信息
-		s, err2 := m.client.GetSubscriptionInfo(m.accessToken)
+		s, err2 := m.client.GetSubscriptionInfo(ctx, m.accessToken)
 		if err2 == nil {
 			sub = &s
 		}

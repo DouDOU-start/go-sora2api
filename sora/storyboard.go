@@ -1,6 +1,7 @@
 package sora
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -49,8 +50,8 @@ func FormatStoryboardPrompt(prompt string) string {
 
 // CreateStoryboardTask 创建分镜视频任务
 // prompt 应为分镜格式（会自动调用 FormatStoryboardPrompt 转换）
-func (c *Client) CreateStoryboardTask(accessToken, sentinelToken, prompt, orientation string, nFrames int, mediaID, styleID string) (string, error) {
-	headers := sentinelHeaders(accessToken, sentinelToken)
+func (c *Client) CreateStoryboardTask(ctx context.Context, accessToken, sentinelToken, prompt, orientation string, nFrames int, mediaID, styleID string) (string, error) {
+	headers := c.sentinelHeaders(accessToken, sentinelToken)
 
 	// 格式化分镜提示词
 	formattedPrompt := FormatStoryboardPrompt(prompt)
@@ -85,7 +86,7 @@ func (c *Client) CreateStoryboardTask(accessToken, sentinelToken, prompt, orient
 		"video_caption":      nil,
 	}
 
-	resp, err := c.doPost(soraBaseURL+"/nf/create/storyboard", headers, payload)
+	resp, err := c.doPost(ctx, soraBaseURL+"/nf/create/storyboard", headers, payload)
 	if err != nil {
 		return "", fmt.Errorf("创建分镜任务失败: %w", err)
 	}

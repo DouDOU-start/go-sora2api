@@ -3,7 +3,6 @@ package sora
 import (
 	"fmt"
 	"io"
-	"math/rand"
 	"strings"
 )
 
@@ -35,10 +34,10 @@ func ParseProxy(proxy string) string {
 	return ""
 }
 
-// generateUUID 生成随机 UUID v4
-func generateUUID() string {
+// generateUUID 生成随机 UUID v4（使用 Client 实例的随机数生成器）
+func (c *Client) generateUUID() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	c.randRead(b)
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",

@@ -2,9 +2,9 @@ package sora
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"mime/multipart"
 	"net/textproto"
 	"path/filepath"
@@ -13,8 +13,8 @@ import (
 
 // UploadImage 上传图片，返回 mediaID，用于图生图/图生视频
 // imageData 为图片二进制数据，filename 为文件名（如 "image.png"）
-func (c *Client) UploadImage(accessToken string, imageData []byte, filename string) (string, error) {
-	headers := baseHeaders(accessToken)
+func (c *Client) UploadImage(ctx context.Context, accessToken string, imageData []byte, filename string) (string, error) {
+	headers := c.baseHeaders(accessToken)
 
 	// 检测 MIME 类型
 	mimeType := "image/png"
@@ -48,7 +48,7 @@ func (c *Client) UploadImage(accessToken string, imageData []byte, filename stri
 	}
 	writer.Close()
 
-	resp, err := c.doPostMultipart(soraBaseURL+"/uploads", headers, &buf, writer.FormDataContentType())
+	resp, err := c.doPostMultipart(ctx, soraBaseURL+"/uploads", headers, &buf, writer.FormDataContentType())
 	if err != nil {
 		return "", fmt.Errorf("上传图片失败: %w", err)
 	}
@@ -63,20 +63,20 @@ func (c *Client) UploadImage(accessToken string, imageData []byte, filename stri
 
 // CreateVideoTask 创建视频生成任务（文生视频）
 // 如需图生视频，先调用 UploadImage 获取 mediaID，再传入 CreateVideoTaskWithImage
-func (c *Client) CreateVideoTask(accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size string) (string, error) {
-	return c.CreateVideoTaskWithOptions(accessToken, sentinelToken, prompt, orientation, nFrames, model, size, "", "")
+func (c *Client) CreateVideoTask(ctx context.Context, accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size string) (string, error) {
+	return c.CreateVideoTaskWithOptions(ctx, accessToken, sentinelToken, prompt, orientation, nFrames, model, size, "", "")
 }
 
 // CreateVideoTaskWithImage 创建图生视频任务
-func (c *Client) CreateVideoTaskWithImage(accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size, mediaID string) (string, error) {
-	return c.CreateVideoTaskWithOptions(accessToken, sentinelToken, prompt, orientation, nFrames, model, size, mediaID, "")
+func (c *Client) CreateVideoTaskWithImage(ctx context.Context, accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size, mediaID string) (string, error) {
+	return c.CreateVideoTaskWithOptions(ctx, accessToken, sentinelToken, prompt, orientation, nFrames, model, size, mediaID, "")
 }
 
 // CreateVideoTaskWithOptions 创建视频任务的完整方法
 // mediaID 为空表示文生视频，非空表示图生视频
 // styleID 为空表示无风格，可选值见 ValidStyles
-func (c *Client) CreateVideoTaskWithOptions(accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size, mediaID, styleID string) (string, error) {
-	headers := sentinelHeaders(accessToken, sentinelToken)
+func (c *Client) CreateVideoTaskWithOptions(ctx context.Context, accessToken, sentinelToken, prompt, orientation string, nFrames int, model, size, mediaID, styleID string) (string, error) {
+	headers := c.sentinelHeaders(accessToken, sentinelToken)
 
 	inpaintItems := []interface{}{}
 	if mediaID != "" {
@@ -99,7 +99,7 @@ func (c *Client) CreateVideoTaskWithOptions(accessToken, sentinelToken, prompt, 
 		"style_id":      nilIfEmpty(styleID),
 	}
 
-	resp, err := c.doPost(soraBaseURL+"/nf/create", headers, payload)
+	resp, err := c.doPost(ctx, soraBaseURL+"/nf/create", headers, payload)
 	if err != nil {
 		return "", fmt.Errorf("创建任务失败: %w", err)
 	}
@@ -114,14 +114,14 @@ func (c *Client) CreateVideoTaskWithOptions(accessToken, sentinelToken, prompt, 
 
 // CreateImageTask 创建图片生成任务（文生图）
 // 如需图生图，先调用 UploadImage 获取 mediaID，再传入 CreateImageTaskWithImage
-func (c *Client) CreateImageTask(accessToken, sentinelToken, prompt string, width, height int) (string, error) {
-	return c.CreateImageTaskWithImage(accessToken, sentinelToken, prompt, width, height, "")
+func (c *Client) CreateImageTask(ctx context.Context, accessToken, sentinelToken, prompt string, width, height int) (string, error) {
+	return c.CreateImageTaskWithImage(ctx, accessToken, sentinelToken, prompt, width, height, "")
 }
 
 // CreateImageTaskWithImage 创建图生图任务
 // mediaID 为空表示文生图，非空表示图生图
-func (c *Client) CreateImageTaskWithImage(accessToken, sentinelToken, prompt string, width, height int, mediaID string) (string, error) {
-	headers := sentinelHeaders(accessToken, sentinelToken)
+func (c *Client) CreateImageTaskWithImage(ctx context.Context, accessToken, sentinelToken, prompt string, width, height int, mediaID string) (string, error) {
+	headers := c.sentinelHeaders(accessToken, sentinelToken)
 
 	operation := "simple_compose"
 	inpaintItems := []interface{}{}
@@ -147,7 +147,7 @@ func (c *Client) CreateImageTaskWithImage(accessToken, sentinelToken, prompt str
 		"inpaint_items": inpaintItems,
 	}
 
-	resp, err := c.doPost(soraBaseURL+"/video_gen", headers, payload)
+	resp, err := c.doPost(ctx, soraBaseURL+"/video_gen", headers, payload)
 	if err != nil {
 		return "", fmt.Errorf("创建图片任务失败: %w", err)
 	}
@@ -162,8 +162,8 @@ func (c *Client) CreateImageTaskWithImage(accessToken, sentinelToken, prompt str
 
 // RemixVideo 基于已有视频创建 Remix 任务
 // remixTargetID 为 Sora 分享链接中的视频 ID，格式: s_[hex32]
-func (c *Client) RemixVideo(accessToken, sentinelToken, remixTargetID, prompt, orientation string, nFrames int, styleID string) (string, error) {
-	headers := sentinelHeaders(accessToken, sentinelToken)
+func (c *Client) RemixVideo(ctx context.Context, accessToken, sentinelToken, remixTargetID, prompt, orientation string, nFrames int, styleID string) (string, error) {
+	headers := c.sentinelHeaders(accessToken, sentinelToken)
 
 	payload := map[string]interface{}{
 		"kind":               "video",
@@ -178,7 +178,7 @@ func (c *Client) RemixVideo(accessToken, sentinelToken, remixTargetID, prompt, o
 		"style_id":           nilIfEmpty(styleID),
 	}
 
-	resp, err := c.doPost(soraBaseURL+"/nf/create", headers, payload)
+	resp, err := c.doPost(ctx, soraBaseURL+"/nf/create", headers, payload)
 	if err != nil {
 		return "", fmt.Errorf("创建 Remix 任务失败: %w", err)
 	}
@@ -194,8 +194,8 @@ func (c *Client) RemixVideo(accessToken, sentinelToken, remixTargetID, prompt, o
 // EnhancePrompt 使用 Sora 的提示词优化 API 增强提示词
 // expansionLevel: "medium" 或 "long"
 // durationSec: 5、10、15 或 25
-func (c *Client) EnhancePrompt(accessToken, prompt, expansionLevel string, durationSec int) (string, error) {
-	headers := jsonHeaders(accessToken)
+func (c *Client) EnhancePrompt(ctx context.Context, accessToken, prompt, expansionLevel string, durationSec int) (string, error) {
+	headers := c.jsonHeaders(accessToken)
 
 	payload := map[string]interface{}{
 		"prompt":          prompt,
@@ -203,7 +203,7 @@ func (c *Client) EnhancePrompt(accessToken, prompt, expansionLevel string, durat
 		"duration_s":      durationSec,
 	}
 
-	resp, err := c.doPost(soraBaseURL+"/editor/enhance_prompt", headers, payload)
+	resp, err := c.doPost(ctx, soraBaseURL+"/editor/enhance_prompt", headers, payload)
 	if err != nil {
 		return "", fmt.Errorf("提示词优化失败: %w", err)
 	}
@@ -220,24 +220,24 @@ const DefaultSoraClientID = "app_1LOVEceTvrP2tHFDNnrPLQkJ"
 
 // RefreshAccessToken 使用 refresh_token 获取新的 access_token
 // 返回新的 accessToken 和 refreshToken（OpenAI 每次刷新都会返回新的 refresh_token）
-func (c *Client) RefreshAccessToken(refreshToken, clientID string) (newAccessToken, newRefreshToken string, err error) {
+func (c *Client) RefreshAccessToken(ctx context.Context, refreshToken, clientID string) (newAccessToken, newRefreshToken string, err error) {
 	if clientID == "" {
 		clientID = DefaultSoraClientID
 	}
 
 	headers := map[string]string{
 		"Content-Type": "application/json",
-		"User-Agent":   mobileUserAgents[rand.Intn(len(mobileUserAgents))],
+		"User-Agent":   mobileUserAgents[c.randIntn(len(mobileUserAgents))],
 	}
 
 	payload := map[string]string{
-		"client_id":    clientID,
-		"grant_type":   "refresh_token",
-		"redirect_uri": "com.openai.sora://auth.openai.com/android/com.openai.sora/callback",
+		"client_id":     clientID,
+		"grant_type":    "refresh_token",
+		"redirect_uri":  "com.openai.sora://auth.openai.com/android/com.openai.sora/callback",
 		"refresh_token": refreshToken,
 	}
 
-	resp, err := c.doPost("https://auth.openai.com/oauth/token", headers, payload)
+	resp, err := c.doPost(ctx, "https://auth.openai.com/oauth/token", headers, payload)
 	if err != nil {
 		return "", "", fmt.Errorf("刷新 token 失败: %w", err)
 	}
@@ -254,13 +254,13 @@ func (c *Client) RefreshAccessToken(refreshToken, clientID string) (newAccessTok
 // GetWatermarkFreeURL 获取 Sora 视频的无水印下载链接
 // 需要使用 RefreshAccessToken 获取的 token，普通 ChatGPT access_token 不支持
 // videoID 为 Sora 分享链接中的视频 ID，也可以传入完整链接（自动提取 ID）
-func (c *Client) GetWatermarkFreeURL(accessToken, videoID string) (string, error) {
+func (c *Client) GetWatermarkFreeURL(ctx context.Context, accessToken, videoID string) (string, error) {
 	// 如果传入的是完整链接，自动提取 ID
 	if extracted := ExtractVideoID(videoID); extracted != "" {
 		videoID = extracted
 	}
 
-	userAgent := mobileUserAgents[rand.Intn(len(mobileUserAgents))]
+	userAgent := mobileUserAgents[c.randIntn(len(mobileUserAgents))]
 
 	headers := map[string]string{
 		"Authorization":    "Bearer " + accessToken,
@@ -269,7 +269,7 @@ func (c *Client) GetWatermarkFreeURL(accessToken, videoID string) (string, error
 		"oai-package-name": "com.openai.sora",
 	}
 
-	body, err := c.doGet(soraBaseURL+"/project_y/post/"+videoID, headers)
+	body, err := c.doGet(ctx, soraBaseURL+"/project_y/post/"+videoID, headers)
 	if err != nil {
 		return "", fmt.Errorf("获取视频信息失败: %w", err)
 	}

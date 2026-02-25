@@ -2,10 +2,11 @@ package sora
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"strings"
+	"sync"
 
 	http "github.com/bogdanfinn/fhttp"
 	tls_client "github.com/bogdanfinn/tls-client"
@@ -46,6 +47,8 @@ type ProgressFunc func(Progress)
 // Client Sora API 客户端
 type Client struct {
 	httpClient tls_client.HttpClient
+	rng        *rand.Rand
+	rngMu      sync.Mutex
 }
 
 // New 创建客户端，proxyURL 为空则不使用代理
@@ -65,16 +68,48 @@ func New(proxyURL string) (*Client, error) {
 		return nil, fmt.Errorf("创建 TLS 客户端失败: %w", err)
 	}
 
-	return &Client{httpClient: c}, nil
+	return &Client{
+		httpClient: c,
+		rng:        rand.New(rand.NewSource(rand.Int63())),
+	}, nil
 }
 
-func (c *Client) doPost(url string, headers map[string]string, body interface{}) (map[string]interface{}, error) {
+// randIntn 使用实例级别的随机数生成器，避免全局锁竞争
+func (c *Client) randIntn(n int) int {
+	c.rngMu.Lock()
+	v := c.rng.Intn(n)
+	c.rngMu.Unlock()
+	return v
+}
+
+// randFloat64 使用实例级别的随机数生成器
+func (c *Client) randFloat64() float64 {
+	c.rngMu.Lock()
+	v := c.rng.Float64()
+	c.rngMu.Unlock()
+	return v
+}
+
+// randRead 使用实例级别的随机数生成器填充字节切片
+func (c *Client) randRead(b []byte) {
+	c.rngMu.Lock()
+	c.rng.Read(b)
+	c.rngMu.Unlock()
+}
+
+func (c *Client) doPost(ctx context.Context, url string, headers map[string]string, body interface{}) (map[string]interface{}, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(bodyBytes)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -100,8 +135,14 @@ func (c *Client) doPost(url string, headers map[string]string, body interface{})
 	return result, nil
 }
 
-func (c *Client) doGet(url string, headers map[string]string) ([]byte, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func (c *Client) doGet(ctx context.Context, url string, headers map[string]string) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -127,8 +168,14 @@ func (c *Client) doGet(url string, headers map[string]string) ([]byte, error) {
 	return buf, nil
 }
 
-func (c *Client) doPostMultipart(url string, headers map[string]string, body *bytes.Buffer, contentType string) (map[string]interface{}, error) {
-	req, err := http.NewRequest("POST", url, body)
+func (c *Client) doPostMultipart(ctx context.Context, url string, headers map[string]string, body *bytes.Buffer, contentType string) (map[string]interface{}, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, body)
 	if err != nil {
 		return nil, err
 	}
@@ -155,8 +202,14 @@ func (c *Client) doPostMultipart(url string, headers map[string]string, body *by
 	return result, nil
 }
 
-func (c *Client) doDelete(url string, headers map[string]string) error {
-	req, err := http.NewRequest("DELETE", url, nil)
+func (c *Client) doDelete(ctx context.Context, url string, headers map[string]string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 	if err != nil {
 		return err
 	}
@@ -179,34 +232,34 @@ func (c *Client) doDelete(url string, headers map[string]string) error {
 }
 
 // baseHeaders 返回基础请求头（Authorization + User-Agent + Origin + Referer）
-func baseHeaders(accessToken string) map[string]string {
+func (c *Client) baseHeaders(accessToken string) map[string]string {
 	return map[string]string{
 		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    mobileUserAgents[rand.Intn(len(mobileUserAgents))],
+		"User-Agent":    mobileUserAgents[c.randIntn(len(mobileUserAgents))],
 		"Origin":        "https://sora.chatgpt.com",
 		"Referer":       "https://sora.chatgpt.com/",
 	}
 }
 
 // jsonHeaders 返回 JSON POST 请求头
-func jsonHeaders(accessToken string) map[string]string {
-	h := baseHeaders(accessToken)
+func (c *Client) jsonHeaders(accessToken string) map[string]string {
+	h := c.baseHeaders(accessToken)
 	h["Content-Type"] = "application/json"
 	return h
 }
 
 // sentinelHeaders 返回带 sentinel token 的请求头
-func sentinelHeaders(accessToken, sentinelToken string) map[string]string {
-	h := jsonHeaders(accessToken)
+func (c *Client) sentinelHeaders(accessToken, sentinelToken string) map[string]string {
+	h := c.jsonHeaders(accessToken)
 	h["openai-sentinel-token"] = sentinelToken
 	return h
 }
 
 // GenerateSentinelToken 获取 sentinel token（含 PoW 计算）
-func (c *Client) GenerateSentinelToken(accessToken string) (string, error) {
-	reqID := generateUUID()
-	userAgent := desktopUserAgents[rand.Intn(len(desktopUserAgents))]
-	powToken := getPowToken(userAgent)
+func (c *Client) GenerateSentinelToken(ctx context.Context, accessToken string) (string, error) {
+	reqID := c.generateUUID()
+	userAgent := desktopUserAgents[c.randIntn(len(desktopUserAgents))]
+	powToken := c.getPowToken(userAgent)
 
 	headers := map[string]string{
 		"Accept":        "application/json, text/plain, */*",
@@ -223,10 +276,10 @@ func (c *Client) GenerateSentinelToken(accessToken string) (string, error) {
 		"id":   reqID,
 	}
 
-	resp, err := c.doPost(chatgptBaseURL+"/backend-api/sentinel/req", headers, payload)
+	resp, err := c.doPost(ctx, chatgptBaseURL+"/backend-api/sentinel/req", headers, payload)
 	if err != nil {
 		return "", fmt.Errorf("sentinel 请求失败: %w", err)
 	}
 
-	return buildSentinelToken(sentinelFlow, reqID, powToken, resp, userAgent), nil
+	return c.buildSentinelToken(sentinelFlow, reqID, powToken, resp, userAgent), nil
 }

@@ -1,75 +1,143 @@
 package sora
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 )
 
+// ── 轮询接口的响应结构体（替代 map[string]interface{} 提升反序列化性能） ──
+
+type recentTasksResp struct {
+	TaskResponses []taskResponseItem `json:"task_responses"`
+}
+
+type taskResponseItem struct {
+	ID            string           `json:"id"`
+	Status        string           `json:"status"`
+	FailureReason string           `json:"failure_reason"`
+	ProgressPct   json.Number      `json:"progress_pct"`
+	Generations   []generationItem `json:"generations"`
+}
+
+type generationItem struct {
+	URL string `json:"url"`
+}
+
+type pendingTaskItem struct {
+	ID            string      `json:"id"`
+	Status        string      `json:"status"`
+	FailureReason string      `json:"failure_reason"`
+	ProgressPct   json.Number `json:"progress_pct"`
+}
+
+type draftsResp struct {
+	Items []draftItem `json:"items"`
+}
+
+type draftItem struct {
+	TaskID          string `json:"task_id"`
+	Kind            string `json:"kind"`
+	ReasonStr       string `json:"reason_str"`
+	MarkdownReason  string `json:"markdown_reason_str"`
+	DownloadableURL string `json:"downloadable_url"`
+	URL             string `json:"url"`
+}
+
+// parseProgressFromNumber 从 json.Number 解析进度百分比
+func parseProgressFromNumber(n json.Number) int {
+	f, err := n.Float64()
+	if err != nil {
+		return 0
+	}
+	if f > 0 && f <= 1 {
+		return int(f * 100)
+	}
+	return int(f)
+}
+
+// backoff 计算退避间隔：min(base * 2^attempt, maxInterval)
+func backoff(base time.Duration, attempt int, maxInterval time.Duration) time.Duration {
+	d := time.Duration(float64(base) * math.Pow(1.5, float64(attempt)))
+	if d > maxInterval {
+		d = maxInterval
+	}
+	return d
+}
+
+// sleepWithContext 可被 ctx 取消的 sleep
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
 // PollImageTask 轮询图片任务进度，返回图片 URL
 // onProgress 可为 nil，非 nil 时在每次轮询后回调进度
-func (c *Client) PollImageTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) (string, error) {
-	headers := baseHeaders(accessToken)
+func (c *Client) PollImageTask(ctx context.Context, accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) (string, error) {
+	headers := c.baseHeaders(accessToken)
 
 	startTime := time.Now()
-	time.Sleep(2 * time.Second)
+	if err := sleepWithContext(ctx, 2*time.Second); err != nil {
+		return "", err
+	}
 
+	failCount := 0
 	for {
 		elapsed := time.Since(startTime)
 		if elapsed > pollTimeout {
 			return "", fmt.Errorf("轮询超时 (%v)", pollTimeout)
 		}
 
-		body, err := c.doGet(soraBaseURL+"/v2/recent_tasks?limit=20", headers)
+		body, err := c.doGet(ctx, soraBaseURL+"/v2/recent_tasks?limit=20", headers)
 		if err != nil {
-			time.Sleep(pollInterval)
+			failCount++
+			if err := sleepWithContext(ctx, backoff(pollInterval, failCount, 30*time.Second)); err != nil {
+				return "", err
+			}
 			continue
 		}
+		failCount = 0
 
-		var result map[string]interface{}
+		var result recentTasksResp
 		if err := json.Unmarshal(body, &result); err != nil {
-			time.Sleep(pollInterval)
+			if err := sleepWithContext(ctx, pollInterval); err != nil {
+				return "", err
+			}
 			continue
 		}
 
-		taskResponses, _ := result["task_responses"].([]interface{})
-		for _, taskRaw := range taskResponses {
-			task, ok := taskRaw.(map[string]interface{})
-			if !ok {
+		for i := range result.TaskResponses {
+			task := &result.TaskResponses[i]
+			if task.ID != taskID {
 				continue
 			}
 
-			id, _ := task["id"].(string)
-			if id != taskID {
-				continue
-			}
-
-			status, _ := task["status"].(string)
-			progressPct := parseProgressPct(task)
+			progressPct := parseProgressFromNumber(task.ProgressPct)
 
 			if onProgress != nil {
 				onProgress(Progress{
 					Percent: progressPct,
-					Status:  status,
+					Status:  task.Status,
 					Elapsed: int(elapsed.Seconds()),
 				})
 			}
 
-			if status == "failed" || status == "error" {
-				reason, _ := task["failure_reason"].(string)
-				return "", fmt.Errorf("任务失败: %s", reason)
+			if task.Status == "failed" || task.Status == "error" {
+				return "", fmt.Errorf("任务失败: %s", task.FailureReason)
 			}
 
-			if status == "succeeded" {
-				generations, _ := task["generations"].([]interface{})
-				for _, genRaw := range generations {
-					gen, ok := genRaw.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					url, _ := gen["url"].(string)
-					if url != "" {
-						return url, nil
+			if task.Status == "succeeded" {
+				for j := range task.Generations {
+					if task.Generations[j].URL != "" {
+						return task.Generations[j].URL, nil
 					}
 				}
 				return "", fmt.Errorf("任务成功但未找到图片 URL")
@@ -78,69 +146,79 @@ func (c *Client) PollImageTask(accessToken, taskID string, pollInterval, pollTim
 			break
 		}
 
-		time.Sleep(pollInterval)
+		if err := sleepWithContext(ctx, pollInterval); err != nil {
+			return "", err
+		}
 	}
 }
 
 // PollVideoTask 轮询视频任务进度
 // onProgress 可为 nil，非 nil 时在每次轮询后回调进度
-func (c *Client) PollVideoTask(accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) error {
-	headers := baseHeaders(accessToken)
+func (c *Client) PollVideoTask(ctx context.Context, accessToken, taskID string, pollInterval, pollTimeout time.Duration, onProgress ProgressFunc) error {
+	headers := c.baseHeaders(accessToken)
 
 	startTime := time.Now()
 	maxProgress := 0
 	everFound := false
 	notFoundCount := 0
 
-	time.Sleep(2 * time.Second)
+	if err := sleepWithContext(ctx, 2*time.Second); err != nil {
+		return err
+	}
 
+	failCount := 0
 	for {
 		elapsed := time.Since(startTime)
 		if elapsed > pollTimeout {
 			return fmt.Errorf("轮询超时 (%v)", pollTimeout)
 		}
 
-		body, err := c.doGet(soraBaseURL+"/nf/pending/v2", headers)
+		body, err := c.doGet(ctx, soraBaseURL+"/nf/pending/v2", headers)
 		if err != nil {
-			time.Sleep(pollInterval)
+			failCount++
+			if err := sleepWithContext(ctx, backoff(pollInterval, failCount, 30*time.Second)); err != nil {
+				return err
+			}
 			continue
 		}
+		failCount = 0
 
-		var tasks []map[string]interface{}
+		var tasks []pendingTaskItem
 		if err := json.Unmarshal(body, &tasks); err != nil {
-			time.Sleep(pollInterval)
+			if err := sleepWithContext(ctx, pollInterval); err != nil {
+				return err
+			}
 			continue
 		}
 
 		found := false
-		for _, task := range tasks {
-			id, _ := task["id"].(string)
-			if id == taskID {
-				found = true
-				everFound = true
-				notFoundCount = 0
-
-				progressPct := parseProgressPct(task)
-				status, _ := task["status"].(string)
-
-				if progressPct > maxProgress {
-					maxProgress = progressPct
-				}
-
-				if onProgress != nil {
-					onProgress(Progress{
-						Percent: maxProgress,
-						Status:  status,
-						Elapsed: int(elapsed.Seconds()),
-					})
-				}
-
-				if status == "failed" || status == "error" {
-					reason, _ := task["failure_reason"].(string)
-					return fmt.Errorf("任务失败: %s", reason)
-				}
-				break
+		for i := range tasks {
+			task := &tasks[i]
+			if task.ID != taskID {
+				continue
 			}
+
+			found = true
+			everFound = true
+			notFoundCount = 0
+
+			progressPct := parseProgressFromNumber(task.ProgressPct)
+			if progressPct > maxProgress {
+				maxProgress = progressPct
+			}
+
+			if onProgress != nil {
+				onProgress(Progress{
+					Percent: maxProgress,
+					Status:  task.Status,
+					Elapsed: int(elapsed.Seconds()),
+				})
+			}
+
+			if task.Status == "failed" || task.Status == "error" {
+				return fmt.Errorf("任务失败: %s", task.FailureReason)
+			}
+			break
 		}
 
 		if !found {
@@ -153,51 +231,47 @@ func (c *Client) PollVideoTask(accessToken, taskID string, pollInterval, pollTim
 			}
 		}
 
-		time.Sleep(pollInterval)
+		if err := sleepWithContext(ctx, pollInterval); err != nil {
+			return err
+		}
 	}
 }
 
 // GetDownloadURL 从 drafts 接口获取下载链接
-func (c *Client) GetDownloadURL(accessToken, taskID string) (string, error) {
-	headers := baseHeaders(accessToken)
+func (c *Client) GetDownloadURL(ctx context.Context, accessToken, taskID string) (string, error) {
+	headers := c.baseHeaders(accessToken)
 
 	for attempt := 0; attempt < 3; attempt++ {
-		body, err := c.doGet(soraBaseURL+"/project_y/profile/drafts?limit=15", headers)
+		body, err := c.doGet(ctx, soraBaseURL+"/project_y/profile/drafts?limit=15", headers)
 		if err != nil {
 			if attempt < 2 {
-				time.Sleep(3 * time.Second)
+				if err := sleepWithContext(ctx, backoff(3*time.Second, attempt, 15*time.Second)); err != nil {
+					return "", err
+				}
 			}
 			continue
 		}
 
-		var result map[string]interface{}
+		var result draftsResp
 		if err := json.Unmarshal(body, &result); err != nil {
 			if attempt < 2 {
-				time.Sleep(3 * time.Second)
+				if err := sleepWithContext(ctx, 3*time.Second); err != nil {
+					return "", err
+				}
 			}
 			continue
 		}
 
-		items, _ := result["items"].([]interface{})
-		for _, itemRaw := range items {
-			item, ok := itemRaw.(map[string]interface{})
-			if !ok {
+		for i := range result.Items {
+			item := &result.Items[i]
+			if item.TaskID != taskID {
 				continue
 			}
 
-			tid, _ := item["task_id"].(string)
-			if tid != taskID {
-				continue
-			}
-
-			kind, _ := item["kind"].(string)
-			reasonStr, _ := item["reason_str"].(string)
-			markdownReason, _ := item["markdown_reason_str"].(string)
-
-			if kind == "sora_content_violation" || reasonStr != "" || markdownReason != "" {
-				reason := reasonStr
+			if item.Kind == "sora_content_violation" || item.ReasonStr != "" || item.MarkdownReason != "" {
+				reason := item.ReasonStr
 				if reason == "" {
-					reason = markdownReason
+					reason = item.MarkdownReason
 				}
 				if reason == "" {
 					reason = "内容违反使用政策"
@@ -205,9 +279,9 @@ func (c *Client) GetDownloadURL(accessToken, taskID string) (string, error) {
 				return "", fmt.Errorf("内容违规: %s", reason)
 			}
 
-			downloadURL, _ := item["downloadable_url"].(string)
+			downloadURL := item.DownloadableURL
 			if downloadURL == "" {
-				downloadURL, _ = item["url"].(string)
+				downloadURL = item.URL
 			}
 			if downloadURL != "" {
 				return downloadURL, nil
@@ -215,7 +289,9 @@ func (c *Client) GetDownloadURL(accessToken, taskID string) (string, error) {
 		}
 
 		if attempt < 2 {
-			time.Sleep(3 * time.Second)
+			if err := sleepWithContext(ctx, 3*time.Second); err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -238,51 +314,38 @@ type VideoTaskResult struct {
 }
 
 // QueryImageTaskOnce 单次查询图片任务状态（非阻塞，供 TUI 使用）
-func (c *Client) QueryImageTaskOnce(accessToken, taskID string, startTime time.Time) ImageTaskResult {
-	headers := baseHeaders(accessToken)
+func (c *Client) QueryImageTaskOnce(ctx context.Context, accessToken, taskID string, startTime time.Time) ImageTaskResult {
+	headers := c.baseHeaders(accessToken)
 
 	elapsed := time.Since(startTime)
 
-	body, err := c.doGet(soraBaseURL+"/v2/recent_tasks?limit=20", headers)
+	body, err := c.doGet(ctx, soraBaseURL+"/v2/recent_tasks?limit=20", headers)
 	if err != nil {
 		return ImageTaskResult{Err: fmt.Errorf("查询失败: %w", err)}
 	}
 
-	var result map[string]interface{}
+	var result recentTasksResp
 	if err := json.Unmarshal(body, &result); err != nil {
 		return ImageTaskResult{Err: fmt.Errorf("解析失败: %w", err)}
 	}
 
-	taskResponses, _ := result["task_responses"].([]interface{})
-	for _, taskRaw := range taskResponses {
-		task, ok := taskRaw.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		id, _ := task["id"].(string)
-		if id != taskID {
+	for i := range result.TaskResponses {
+		task := &result.TaskResponses[i]
+		if task.ID != taskID {
 			continue
 		}
 
-		status, _ := task["status"].(string)
-		progressPct := parseProgressPct(task)
-		progress := Progress{Percent: progressPct, Status: status, Elapsed: int(elapsed.Seconds())}
+		progressPct := parseProgressFromNumber(task.ProgressPct)
+		progress := Progress{Percent: progressPct, Status: task.Status, Elapsed: int(elapsed.Seconds())}
 
-		if status == "failed" || status == "error" {
-			reason, _ := task["failure_reason"].(string)
-			return ImageTaskResult{Progress: progress, Done: true, Err: fmt.Errorf("任务失败: %s", reason)}
+		if task.Status == "failed" || task.Status == "error" {
+			return ImageTaskResult{Progress: progress, Done: true, Err: fmt.Errorf("任务失败: %s", task.FailureReason)}
 		}
 
-		if status == "succeeded" {
-			generations, _ := task["generations"].([]interface{})
-			for _, genRaw := range generations {
-				gen, ok := genRaw.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				url, _ := gen["url"].(string)
-				if url != "" {
-					return ImageTaskResult{Progress: progress, Done: true, ImageURL: url}
+		if task.Status == "succeeded" {
+			for j := range task.Generations {
+				if task.Generations[j].URL != "" {
+					return ImageTaskResult{Progress: progress, Done: true, ImageURL: task.Generations[j].URL}
 				}
 			}
 			return ImageTaskResult{Progress: progress, Done: true, Err: fmt.Errorf("任务成功但未找到图片 URL")}
@@ -296,39 +359,36 @@ func (c *Client) QueryImageTaskOnce(accessToken, taskID string, startTime time.T
 
 // QueryVideoTaskOnce 单次查询视频任务状态（非阻塞，供 TUI 使用）
 // maxProgress 应传入之前的最大进度值，返回的结果中会包含更新后的进度
-func (c *Client) QueryVideoTaskOnce(accessToken, taskID string, startTime time.Time, maxProgress int) VideoTaskResult {
-	headers := baseHeaders(accessToken)
+func (c *Client) QueryVideoTaskOnce(ctx context.Context, accessToken, taskID string, startTime time.Time, maxProgress int) VideoTaskResult {
+	headers := c.baseHeaders(accessToken)
 
 	elapsed := time.Since(startTime)
 
-	body, err := c.doGet(soraBaseURL+"/nf/pending/v2", headers)
+	body, err := c.doGet(ctx, soraBaseURL+"/nf/pending/v2", headers)
 	if err != nil {
 		return VideoTaskResult{Err: fmt.Errorf("查询失败: %w", err)}
 	}
 
-	var tasks []map[string]interface{}
+	var tasks []pendingTaskItem
 	if err := json.Unmarshal(body, &tasks); err != nil {
 		return VideoTaskResult{Err: fmt.Errorf("解析失败: %w", err)}
 	}
 
-	for _, task := range tasks {
-		id, _ := task["id"].(string)
-		if id != taskID {
+	for i := range tasks {
+		task := &tasks[i]
+		if task.ID != taskID {
 			continue
 		}
 
-		progressPct := parseProgressPct(task)
-		status, _ := task["status"].(string)
-
+		progressPct := parseProgressFromNumber(task.ProgressPct)
 		if progressPct > maxProgress {
 			maxProgress = progressPct
 		}
 
-		progress := Progress{Percent: maxProgress, Status: status, Elapsed: int(elapsed.Seconds())}
+		progress := Progress{Percent: maxProgress, Status: task.Status, Elapsed: int(elapsed.Seconds())}
 
-		if status == "failed" || status == "error" {
-			reason, _ := task["failure_reason"].(string)
-			return VideoTaskResult{Progress: progress, Done: true, Err: fmt.Errorf("任务失败: %s", reason)}
+		if task.Status == "failed" || task.Status == "error" {
+			return VideoTaskResult{Progress: progress, Done: true, Err: fmt.Errorf("任务失败: %s", task.FailureReason)}
 		}
 
 		return VideoTaskResult{Progress: progress}
@@ -343,39 +403,40 @@ func (c *Client) QueryVideoTaskOnce(accessToken, taskID string, startTime time.T
 
 // CreditBalance 配额信息
 type CreditBalance struct {
-	RemainingCount      int  // 剩余可用次数
-	RateLimitReached    bool // 是否触发速率限制
-	AccessResetsInSec   int  // 访问权限重置时间（秒）
+	RemainingCount    int  // 剩余可用次数
+	RateLimitReached  bool // 是否触发速率限制
+	AccessResetsInSec int  // 访问权限重置时间（秒）
+}
+
+// creditBalanceResp 配额 API 响应结构体
+type creditBalanceResp struct {
+	RateLimitAndCreditBalance struct {
+		EstimatedNumVideosRemaining float64 `json:"estimated_num_videos_remaining"`
+		RateLimitReached            bool    `json:"rate_limit_reached"`
+		AccessResetsInSeconds       float64 `json:"access_resets_in_seconds"`
+	} `json:"rate_limit_and_credit_balance"`
 }
 
 // GetCreditBalance 获取当前账号的可用次数和配额信息
-func (c *Client) GetCreditBalance(accessToken string) (CreditBalance, error) {
-	headers := baseHeaders(accessToken)
+func (c *Client) GetCreditBalance(ctx context.Context, accessToken string) (CreditBalance, error) {
+	headers := c.baseHeaders(accessToken)
 	headers["Accept"] = "application/json"
 
-	body, err := c.doGet(soraBaseURL+"/nf/check", headers)
+	body, err := c.doGet(ctx, soraBaseURL+"/nf/check", headers)
 	if err != nil {
 		return CreditBalance{}, fmt.Errorf("获取配额信息失败: %w", err)
 	}
 
-	var result map[string]interface{}
+	var result creditBalanceResp
 	if err := json.Unmarshal(body, &result); err != nil {
 		return CreditBalance{}, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	rateLimitInfo, _ := result["rate_limit_and_credit_balance"].(map[string]interface{})
-	if rateLimitInfo == nil {
-		return CreditBalance{}, fmt.Errorf("响应中无配额信息: %v", result)
-	}
-
-	remaining, _ := rateLimitInfo["estimated_num_videos_remaining"].(float64)
-	rateLimitReached, _ := rateLimitInfo["rate_limit_reached"].(bool)
-	accessResets, _ := rateLimitInfo["access_resets_in_seconds"].(float64)
-
+	info := result.RateLimitAndCreditBalance
 	return CreditBalance{
-		RemainingCount:    int(remaining),
-		RateLimitReached:  rateLimitReached,
-		AccessResetsInSec: int(accessResets),
+		RemainingCount:    int(info.EstimatedNumVideosRemaining),
+		RateLimitReached:  info.RateLimitReached,
+		AccessResetsInSec: int(info.AccessResetsInSeconds),
 	}, nil
 }
 
@@ -386,50 +447,40 @@ type SubscriptionInfo struct {
 	EndTs     int64  // 订阅到期时间戳（秒）
 }
 
+// subscriptionResp 订阅 API 响应结构体
+type subscriptionResp struct {
+	Data []struct {
+		Plan struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+		} `json:"plan"`
+		EndTs float64 `json:"end_ts"`
+	} `json:"data"`
+}
+
 // GetSubscriptionInfo 获取当前账号的订阅信息（套餐类型、到期时间）
-func (c *Client) GetSubscriptionInfo(accessToken string) (SubscriptionInfo, error) {
-	headers := baseHeaders(accessToken)
+func (c *Client) GetSubscriptionInfo(ctx context.Context, accessToken string) (SubscriptionInfo, error) {
+	headers := c.baseHeaders(accessToken)
 	headers["Accept"] = "application/json"
 
-	body, err := c.doGet(soraBaseURL+"/billing/subscriptions", headers)
+	body, err := c.doGet(ctx, soraBaseURL+"/billing/subscriptions", headers)
 	if err != nil {
 		return SubscriptionInfo{}, fmt.Errorf("获取订阅信息失败: %w", err)
 	}
 
-	var result map[string]interface{}
+	var result subscriptionResp
 	if err := json.Unmarshal(body, &result); err != nil {
 		return SubscriptionInfo{}, fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	data, _ := result["data"].([]interface{})
-	if len(data) == 0 {
+	if len(result.Data) == 0 {
 		return SubscriptionInfo{}, fmt.Errorf("未找到订阅信息")
 	}
 
-	sub, _ := data[0].(map[string]interface{})
-	if sub == nil {
-		return SubscriptionInfo{}, fmt.Errorf("订阅数据格式异常")
-	}
-
-	plan, _ := sub["plan"].(map[string]interface{})
-	planID, _ := plan["id"].(string)
-	planTitle, _ := plan["title"].(string)
-	endTs, _ := sub["end_ts"].(float64)
-
+	sub := result.Data[0]
 	return SubscriptionInfo{
-		PlanID:    planID,
-		PlanTitle: planTitle,
-		EndTs:     int64(endTs),
+		PlanID:    sub.Plan.ID,
+		PlanTitle: sub.Plan.Title,
+		EndTs:     int64(sub.EndTs),
 	}, nil
-}
-
-// parseProgressPct 从任务响应中解析进度百分比
-func parseProgressPct(task map[string]interface{}) int {
-	if p, ok := task["progress_pct"].(float64); ok {
-		if p > 0 && p <= 1 {
-			return int(p * 100)
-		}
-		return int(p)
-	}
-	return 0
 }
