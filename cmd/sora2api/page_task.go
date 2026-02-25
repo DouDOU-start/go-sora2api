@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -278,7 +279,7 @@ func (m taskModel) executeImageTask() tea.Cmd {
 		// 创建任务
 		taskID, err := c.CreateImageTaskWithImage(ctx, at, sentinelToken, prompt, width, height, mediaID)
 		if err != nil {
-			return taskCompleteMsg{err: fmt.Errorf("创建任务失败: %w", err)}
+			return taskCompleteMsg{err: err}
 		}
 
 		// 轮询
@@ -287,7 +288,12 @@ func (m taskModel) executeImageTask() tea.Cmd {
 			return taskCompleteMsg{err: err}
 		}
 
-		return taskCompleteMsg{resultURL: imageURL}
+		// 下载到本地
+		localPath, err := downloadToLocal(ctx, c, imageURL, taskID, ".png")
+		if err != nil {
+			return taskCompleteMsg{resultURL: imageURL}
+		}
+		return taskCompleteMsg{resultURL: localPath}
 	}
 }
 
@@ -354,7 +360,7 @@ func (m taskModel) executeVideoTask() tea.Cmd {
 		// 创建任务
 		taskID, err := c.CreateVideoTaskWithOptions(ctx, at, sentinelToken, prompt, orientation, nFrames, model, size, mediaID, styleID)
 		if err != nil {
-			return taskCompleteMsg{err: fmt.Errorf("创建任务失败: %w", err)}
+			return taskCompleteMsg{err: err}
 		}
 
 		// 轮询
@@ -364,12 +370,17 @@ func (m taskModel) executeVideoTask() tea.Cmd {
 		}
 
 		// 获取下载链接
-		url, err := c.GetDownloadURL(ctx, at, taskID)
+		dlURL, err := c.GetDownloadURL(ctx, at, taskID)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
 
-		return taskCompleteMsg{resultURL: url}
+		// 下载到本地
+		localPath, err := downloadToLocal(ctx, c, dlURL, taskID, ".mp4")
+		if err != nil {
+			return taskCompleteMsg{resultURL: dlURL}
+		}
+		return taskCompleteMsg{resultURL: localPath}
 	}
 }
 
@@ -410,7 +421,7 @@ func (m taskModel) executeRemixTask() tea.Cmd {
 
 		taskID, err := c.RemixVideo(ctx, at, sentinelToken, remixID, prompt, orientation, nFrames, styleID)
 		if err != nil {
-			return taskCompleteMsg{err: fmt.Errorf("创建 Remix 任务失败: %w", err)}
+			return taskCompleteMsg{err: err}
 		}
 
 		err = c.PollVideoTask(ctx, at, taskID, 3*time.Second, 600*time.Second, nil)
@@ -418,12 +429,16 @@ func (m taskModel) executeRemixTask() tea.Cmd {
 			return taskCompleteMsg{err: err}
 		}
 
-		url, err := c.GetDownloadURL(ctx, at, taskID)
+		dlURL, err := c.GetDownloadURL(ctx, at, taskID)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
 
-		return taskCompleteMsg{resultURL: url}
+		localPath, err := downloadToLocal(ctx, c, dlURL, taskID, ".mp4")
+		if err != nil {
+			return taskCompleteMsg{resultURL: dlURL}
+		}
+		return taskCompleteMsg{resultURL: localPath}
 	}
 }
 
@@ -697,7 +712,7 @@ func (m taskModel) executeStoryboard() tea.Cmd {
 		// 创建分镜任务
 		taskID, err := c.CreateStoryboardTask(ctx, at, sentinelToken, prompt, orientation, nFrames, "", "")
 		if err != nil {
-			return taskCompleteMsg{err: fmt.Errorf("创建分镜任务失败: %w", err)}
+			return taskCompleteMsg{err: err}
 		}
 
 		// 轮询
@@ -707,12 +722,16 @@ func (m taskModel) executeStoryboard() tea.Cmd {
 		}
 
 		// 获取下载链接
-		url, err := c.GetDownloadURL(ctx, at, taskID)
+		dlURL, err := c.GetDownloadURL(ctx, at, taskID)
 		if err != nil {
 			return taskCompleteMsg{err: err}
 		}
 
-		return taskCompleteMsg{resultURL: url}
+		localPath, err := downloadToLocal(ctx, c, dlURL, taskID, ".mp4")
+		if err != nil {
+			return taskCompleteMsg{resultURL: dlURL}
+		}
+		return taskCompleteMsg{resultURL: localPath}
 	}
 }
 
@@ -761,4 +780,21 @@ func (m taskModel) executeDeletePost() tea.Cmd {
 func (m taskModel) pollOnce() tea.Cmd {
 	// 此方法预留给未来的非阻塞轮询模式使用
 	return nil
+}
+
+// downloadToLocal 下载文件到当前目录，返回本地文件路径
+func downloadToLocal(ctx context.Context, c *sora.Client, fileURL, taskID, defaultExt string) (string, error) {
+	data, err := c.DownloadFile(ctx, fileURL)
+	if err != nil {
+		return "", err
+	}
+
+	ext := sora.ExtFromURL(fileURL, defaultExt)
+	filename := taskID + ext
+	absPath, _ := filepath.Abs(filename)
+
+	if err := os.WriteFile(absPath, data, 0644); err != nil {
+		return "", err
+	}
+	return absPath, nil
 }

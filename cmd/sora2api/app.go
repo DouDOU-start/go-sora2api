@@ -164,7 +164,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.task.done {
 			m.currentPage = pageResult
-			m.result = newResultModel(m.task.resultURL, m.task.taskErr, m.task.funcType)
+			m.result = newResultModel(m.task.resultURL, m.task.taskErr, m.task.funcType, m.width)
 			return m, nil
 		}
 

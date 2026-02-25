@@ -129,7 +129,7 @@ func (c *Client) doPost(ctx context.Context, url string, headers map[string]stri
 	}
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return result, fmt.Errorf("HTTP %d: %v", resp.StatusCode, result)
+		return result, fmt.Errorf("HTTP %d: %s", resp.StatusCode, extractAPIError(result))
 	}
 
 	return result, nil
@@ -196,7 +196,7 @@ func (c *Client) doPostMultipart(ctx context.Context, url string, headers map[st
 	}
 
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		return result, fmt.Errorf("HTTP %d: %v", resp.StatusCode, result)
+		return result, fmt.Errorf("HTTP %d: %s", resp.StatusCode, extractAPIError(result))
 	}
 
 	return result, nil

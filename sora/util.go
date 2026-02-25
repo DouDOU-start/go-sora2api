@@ -1,8 +1,11 @@
 package sora
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"net/url"
+	"path"
 	"strings"
 )
 
@@ -47,6 +50,45 @@ func (c *Client) generateUUID() string {
 // readAll 读取 io.Reader 全部内容
 func readAll(r io.Reader) ([]byte, error) {
 	return io.ReadAll(r)
+}
+
+// DownloadFile 下载 URL 内容并返回字节数据
+func (c *Client) DownloadFile(ctx context.Context, fileURL string) ([]byte, error) {
+	return c.doGet(ctx, fileURL, nil)
+}
+
+// ExtFromURL 从 URL 中提取文件扩展名，默认返回 fallback
+func ExtFromURL(rawURL, fallback string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fallback
+	}
+	ext := path.Ext(u.Path)
+	if ext == "" {
+		return fallback
+	}
+	return ext
+}
+
+// extractAPIError 从 API 响应中提取可读的错误信息
+// 支持 {"error": {"message": "xxx", "code": "yyy"}} 格式
+func extractAPIError(result map[string]interface{}) string {
+	if result == nil {
+		return "未知错误"
+	}
+	if errObj, ok := result["error"]; ok {
+		if errMap, ok := errObj.(map[string]interface{}); ok {
+			msg, _ := errMap["message"].(string)
+			code, _ := errMap["code"].(string)
+			if msg != "" {
+				if code != "" {
+					return code + ": " + msg
+				}
+				return msg
+			}
+		}
+	}
+	return fmt.Sprintf("%v", result)
 }
 
 // truncate 截断字符串
