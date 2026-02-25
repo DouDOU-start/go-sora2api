@@ -94,7 +94,7 @@ func buildFields(ft funcType) []paramField {
 		return []paramField{
 			textField("prompt", "分镜提示词", "[5.0s]场景1 [5.0s]场景2"),
 			selectField("orientation", "视频方向", []string{"landscape", "portrait"}, []string{"横向 (landscape)", "纵向 (portrait)"}),
-			selectField("n_frames", "视频时长", []string{"150", "300", "450", "750"}, []string{"5 秒", "10 秒", "15 秒", "25 秒"}),
+			selectField("n_frames", "视频时长", []string{"300", "450", "750"}, []string{"10 秒", "15 秒", "25 秒"}),
 		}
 	case funcPublishVideo:
 		return []paramField{
@@ -112,7 +112,7 @@ func videoFields(isRemix bool) []paramField {
 	fields := []paramField{
 		textField("prompt", "提示词", "一只可爱的小猫在草地上奔跑"),
 		selectField("orientation", "视频方向", []string{"landscape", "portrait"}, []string{"横向 (landscape)", "纵向 (portrait)"}),
-		selectField("n_frames", "视频时长", []string{"150", "300", "450", "750"}, []string{"5 秒", "10 秒", "15 秒", "25 秒"}),
+		selectField("n_frames", "视频时长", []string{"300", "450", "750"}, []string{"10 秒", "15 秒", "25 秒"}),
 	}
 	if !isRemix {
 		fields = append(fields,

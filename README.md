@@ -50,7 +50,7 @@ imageURL, _ := c.PollImageTask(accessToken, taskID, 3*time.Second, 600*time.Seco
 
 ```go
 token, _ := c.GenerateSentinelToken(accessToken)
-taskID, _ := c.CreateVideoTask(accessToken, token, "a cat running", "landscape", 150, "sy_8", "small")
+taskID, _ := c.CreateVideoTask(accessToken, token, "a cat running", "landscape", 300, "sy_8", "small")
 _ = c.PollVideoTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
 url, _ := c.GetDownloadURL(accessToken, taskID)
 ```
@@ -61,7 +61,7 @@ url, _ := c.GetDownloadURL(accessToken, taskID)
 mediaID, _ := c.UploadImage(accessToken, imageData, "input.png")
 
 token, _ := c.GenerateSentinelToken(accessToken)
-taskID, _ := c.CreateVideoTaskWithImage(accessToken, token, "animate this scene", "landscape", 150, "sy_8", "small", mediaID)
+taskID, _ := c.CreateVideoTaskWithImage(accessToken, token, "animate this scene", "landscape", 300, "sy_8", "small", mediaID)
 _ = c.PollVideoTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
 url, _ := c.GetDownloadURL(accessToken, taskID)
 ```
@@ -70,7 +70,7 @@ url, _ := c.GetDownloadURL(accessToken, taskID)
 
 ```go
 // 方式一：通过参数指定风格
-taskID, _ := c.CreateVideoTaskWithOptions(accessToken, token, "a cat running", "landscape", 150, "sy_8", "small", "", "anime")
+taskID, _ := c.CreateVideoTaskWithOptions(accessToken, token, "a cat running", "landscape", 300, "sy_8", "small", "", "anime")
 
 // 方式二：从提示词中自动提取 {style}
 prompt, styleID := sora.ExtractStyle("a cat running {anime}")
@@ -86,7 +86,7 @@ prompt, styleID := sora.ExtractStyle("a cat running {anime}")
 remixID := sora.ExtractRemixID("https://sora.chatgpt.com/p/s_690d100857248191b679e6de12db840e")
 
 token, _ := c.GenerateSentinelToken(accessToken)
-taskID, _ := c.RemixVideo(accessToken, token, remixID, "make it snowy", "landscape", 150, "")
+taskID, _ := c.RemixVideo(accessToken, token, remixID, "make it snowy", "landscape", 300, "")
 _ = c.PollVideoTask(accessToken, taskID, 3*time.Second, 600*time.Second, nil)
 url, _ := c.GetDownloadURL(accessToken, taskID)
 ```
@@ -231,7 +231,7 @@ c, _ := sora.New(proxy)
 | 参数 | 可选值 |
 |------|--------|
 | orientation | `landscape` / `portrait` |
-| nFrames | `150`(5s) / `300`(10s) / `450`(15s) / `750`(25s) |
+| nFrames | `300`(10s) / `450`(15s) / `750`(25s) |
 | model | `sy_8`(标准) / `sy_ore`(Pro) |
 | size | `small`(标准) / `large`(高清, 仅Pro) |
 

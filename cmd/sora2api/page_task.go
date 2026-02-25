@@ -305,7 +305,7 @@ func (m taskModel) executeVideoTask() tea.Cmd {
 		}
 		nFrames, _ := strconv.Atoi(m.params["n_frames"])
 		if nFrames == 0 {
-			nFrames = 150
+			nFrames = 300
 		}
 		model := m.params["model"]
 		if model == "" {
@@ -392,7 +392,7 @@ func (m taskModel) executeRemixTask() tea.Cmd {
 		}
 		nFrames, _ := strconv.Atoi(m.params["n_frames"])
 		if nFrames == 0 {
-			nFrames = 150
+			nFrames = 300
 		}
 		styleID := m.params["style"]
 
