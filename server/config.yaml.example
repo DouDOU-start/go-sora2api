@@ -1,0 +1,12 @@
+server:
+  host: "0.0.0.0"
+  port: 8686
+  admin_user: "admin"         # 管理员用户名
+  admin_password: "admin123"  # 管理员密码
+  # jwt_secret: ""            # JWT 签名密钥（留空则每次启动自动生成）
+
+database:
+  url: "postgres://postgres:postgres@localhost:5432/sora2api?sslmode=disable"
+  log_level: "error"          # silent/error/warn/info
+
+# API Keys、代理地址、同步间隔等配置请在 Web 管理面板的「系统设置」页面中配置

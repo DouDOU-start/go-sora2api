@@ -1,2 +1,4 @@
 *.exe
 dist/
+server/config.yaml
+web/node_modules/

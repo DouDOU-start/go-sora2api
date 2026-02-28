@@ -1,0 +1,101 @@
+package handler
+
+import (
+	"net/http"
+
+	"github.com/DouDOU-start/go-sora2api/server/service"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+)
+
+// RouterConfig 路由配置
+type RouterConfig struct {
+	DB        *gorm.DB
+	Scheduler *service.Scheduler
+	TaskStore *service.TaskStore
+	Manager   *service.AccountManager
+	Settings  *service.SettingsStore
+	JWTSecret string
+	AdminUser string
+	AdminPass string
+}
+
+// SetupRouter 注册所有路由
+func SetupRouter(cfg *RouterConfig) *gin.Engine {
+	r := gin.Default()
+
+	// 健康检查
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// 登录端点（无需认证）
+	r.POST("/admin/login", loginHandler(cfg.JWTSecret, cfg.AdminUser, cfg.AdminPass))
+
+	// API 端点（API Key 认证，动态从 SettingsStore 读取）
+	videoHandler := NewVideoHandler(cfg.Scheduler, cfg.TaskStore)
+	api := r.Group("/v1", APIKeyAuthMiddleware(cfg.Settings))
+	{
+		api.POST("/videos", videoHandler.CreateTask)
+		api.GET("/videos/:id", videoHandler.GetTaskStatus)
+		api.GET("/videos/:id/content", videoHandler.DownloadVideo)
+	}
+
+	// 管理端点（JWT 认证）
+	adminHandler := NewAdminHandler(cfg.DB, cfg.Manager, cfg.TaskStore, cfg.Settings)
+	admin := r.Group("/admin", AdminAuthMiddleware(cfg.JWTSecret))
+	{
+		admin.GET("/dashboard", adminHandler.GetDashboard)
+
+		// 系统设置
+		admin.GET("/settings", adminHandler.GetSettings)
+		admin.PUT("/settings", adminHandler.UpdateSettings)
+
+		// 账号组管理
+		admin.GET("/groups", adminHandler.ListGroups)
+		admin.POST("/groups", adminHandler.CreateGroup)
+		admin.PUT("/groups/:id", adminHandler.UpdateGroup)
+		admin.DELETE("/groups/:id", adminHandler.DeleteGroup)
+
+		// 账号管理
+		admin.GET("/accounts", adminHandler.ListAllAccounts)
+		admin.POST("/accounts", adminHandler.CreateAccountDirect)
+		admin.PUT("/accounts/:id", adminHandler.UpdateAccountDirect)
+		admin.DELETE("/accounts/:id", adminHandler.DeleteAccountDirect)
+		admin.POST("/accounts/:id/refresh", adminHandler.RefreshAccountTokenDirect)
+		admin.GET("/accounts/:id/status", adminHandler.GetAccountStatusDirect)
+
+		// 任务管理
+		admin.GET("/tasks", adminHandler.ListTasks)
+		admin.GET("/tasks/:id", adminHandler.GetTask)
+	}
+
+	return r
+}
+
+// loginHandler 管理员登录
+func loginHandler(jwtSecret, adminUser, adminPass string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Username string `json:"username" binding:"required"`
+			Password string `json:"password" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误"})
+			return
+		}
+
+		if req.Username != adminUser || req.Password != adminPass {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
+			return
+		}
+
+		token, err := GenerateJWT(jwtSecret, req.Username)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "生成 Token 失败"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"token": token})
+	}
+}
