@@ -24,3 +24,7 @@ export function refreshAccountToken(accountId: number) {
 export function getAccountStatus(accountId: number) {
   return client.get<SoraAccount>(`/admin/accounts/${accountId}/status`)
 }
+
+export function revealAccountTokens(accountId: number) {
+  return client.get<{ access_token: string; refresh_token: string }>(`/admin/accounts/${accountId}/tokens`)
+}

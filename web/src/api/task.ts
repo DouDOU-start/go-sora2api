@@ -13,3 +13,7 @@ export function listTasks(params: { status?: string; page?: number; page_size?: 
 export function getTask(id: string) {
   return client.get<SoraTask>(`/admin/tasks/${id}`)
 }
+
+export function downloadTaskContent(id: string) {
+  return client.get<Blob>(`/admin/tasks/${id}/content`, { responseType: 'blob', timeout: 120000 })
+}

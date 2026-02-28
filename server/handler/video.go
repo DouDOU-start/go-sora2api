@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -26,7 +27,7 @@ func NewVideoHandler(scheduler *service.Scheduler, taskStore *service.TaskStore)
 	return &VideoHandler{scheduler: scheduler, taskStore: taskStore}
 }
 
-// CreateTask POST /v1/videos — 创建任务
+// CreateTask POST /v1/videos — 创建视频任务（文生视频/图生视频）
 func (h *VideoHandler) CreateTask(c *gin.Context) {
 	var req model.VideoSubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -36,7 +37,6 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	// 解析模型名称
 	params, err := model.ParseModelName(req.Model)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -45,15 +45,147 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	// 从上下文获取 API Key 绑定的分组 ID（由中间件设置）
+	account, client, sentinel, err := h.prepare(c)
+	if err != nil {
+		return // prepare 已写入响应
+	}
+
+	ctx := c.Request.Context()
+
+	prompt := req.Prompt
+	styleID := req.Style
+	if styleID == "" {
+		prompt, styleID = sora.ExtractStyle(req.Prompt)
+	}
+
+	mediaID, err := h.resolveInputReference(ctx, c, client, account, req.InputReference)
+	if err != nil {
+		return
+	}
+
+	log.Printf("[handler] 创建视频: model=%s, orientation=%s, nFrames=%d, size=%s, style=%s, mediaID=%s, 账号=%d",
+		params.Model, params.Orientation, params.NFrames, params.Size, styleID, mediaID, account.ID)
+
+	soraTaskID, err := client.CreateVideoTaskWithOptions(
+		ctx, account.AccessToken, sentinel,
+		prompt, params.Orientation, params.NFrames,
+		params.Model, params.Size, mediaID, styleID,
+	)
+	if err != nil {
+		h.handleSubmitError(c, account, err)
+		return
+	}
+
+	h.finishTask(c, soraTaskID, account, req.Model, req.Prompt, params)
+}
+
+// RemixTask POST /v1/videos/remix — Remix 视频
+func (h *VideoHandler) RemixTask(c *gin.Context) {
+	var req model.RemixSubmitRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": &model.TaskErrorInfo{Message: fmt.Sprintf("请求参数错误: %v", err)},
+		})
+		return
+	}
+
+	params, err := model.ParseModelName(req.Model)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": &model.TaskErrorInfo{Message: err.Error()},
+		})
+		return
+	}
+
+	remixTargetID := sora.ExtractRemixID(req.RemixTarget)
+	if remixTargetID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": &model.TaskErrorInfo{Message: "无效的 remix_target，需要 Sora 分享链接或 s_xxx 格式 ID"},
+		})
+		return
+	}
+
+	account, _, sentinel, err := h.prepare(c)
+	if err != nil {
+		return
+	}
+
+	ctx := c.Request.Context()
+	prompt := req.Prompt
+	styleID := req.Style
+	if styleID == "" {
+		prompt, styleID = sora.ExtractStyle(req.Prompt)
+	}
+
+	client, _ := sora.New(h.scheduler.GetProxyURL())
+	soraTaskID, err := client.RemixVideo(
+		ctx, account.AccessToken, sentinel,
+		remixTargetID, prompt, params.Orientation, params.NFrames, styleID,
+	)
+	if err != nil {
+		h.handleSubmitError(c, account, err)
+		return
+	}
+
+	h.finishTask(c, soraTaskID, account, req.Model, req.Prompt, params)
+}
+
+// StoryboardTask POST /v1/videos/storyboard — 分镜视频
+func (h *VideoHandler) StoryboardTask(c *gin.Context) {
+	var req model.StoryboardSubmitRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": &model.TaskErrorInfo{Message: fmt.Sprintf("请求参数错误: %v", err)},
+		})
+		return
+	}
+
+	params, err := model.ParseModelName(req.Model)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": &model.TaskErrorInfo{Message: err.Error()},
+		})
+		return
+	}
+
+	account, client, sentinel, err := h.prepare(c)
+	if err != nil {
+		return
+	}
+
+	ctx := c.Request.Context()
+	prompt := req.Prompt
+	styleID := req.Style
+	if styleID == "" {
+		prompt, styleID = sora.ExtractStyle(req.Prompt)
+	}
+
+	mediaID, err := h.resolveInputReference(ctx, c, client, account, req.InputReference)
+	if err != nil {
+		return
+	}
+
+	soraTaskID, err := client.CreateStoryboardTask(
+		ctx, account.AccessToken, sentinel,
+		prompt, params.Orientation, params.NFrames, mediaID, styleID,
+	)
+	if err != nil {
+		h.handleSubmitError(c, account, err)
+		return
+	}
+
+	h.finishTask(c, soraTaskID, account, req.Model, req.Prompt, params)
+}
+
+// prepare 公共准备逻辑：获取分组、选账号、创建客户端、生成 sentinel
+func (h *VideoHandler) prepare(c *gin.Context) (account *model.SoraAccount, client *sora.Client, sentinel string, err error) {
 	var groupID *int64
 	if gid, exists := c.Get("api_key_group_id"); exists {
 		id := gid.(int64)
 		groupID = &id
 	}
 
-	// 选取可用账号
-	account, err := h.scheduler.PickAccount(groupID)
+	account, err = h.scheduler.PickAccount(groupID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": &model.TaskErrorInfo{Message: fmt.Sprintf("无可用账号: %v", err)},
@@ -61,8 +193,7 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	// 创建 Sora 客户端
-	client, err := sora.New(h.scheduler.GetProxyURL())
+	client, err = sora.New(h.scheduler.GetProxyURL())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": &model.TaskErrorInfo{Message: fmt.Sprintf("创建 Sora 客户端失败: %v", err)},
@@ -70,98 +201,62 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
-
-	// 生成 Sentinel Token（PoW）
-	sentinel, err := client.GenerateSentinelToken(ctx, account.AccessToken)
+	sentinel, err = client.GenerateSentinelToken(c.Request.Context(), account.AccessToken)
 	if err != nil {
 		h.handleSubmitError(c, account, err)
 		return
 	}
 
-	// 提取风格（优先使用请求中的 style 字段，其次从 prompt 中提取 {style} 标记）
-	prompt := req.Prompt
-	styleID := req.Style
-	if styleID == "" {
-		prompt, styleID = sora.ExtractStyle(req.Prompt)
+	return
+}
+
+// resolveInputReference 处理参考图输入（URL 或 base64 data URI），返回 mediaID
+func (h *VideoHandler) resolveInputReference(ctx context.Context, c *gin.Context, client *sora.Client, account *model.SoraAccount, inputRef string) (string, error) {
+	if inputRef == "" {
+		return "", nil
 	}
 
-	// 处理图片引用（图生视频），支持 URL 和 base64 data URI
-	var mediaID string
-	if req.InputReference != "" {
-		var imgData []byte
-		var ext string
-		if sora.IsDataURI(req.InputReference) {
-			var parseErr error
-			imgData, ext, parseErr = sora.ParseDataURI(req.InputReference)
-			if parseErr != nil {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error": &model.TaskErrorInfo{Message: fmt.Sprintf("解析参考图片 base64 失败: %v", parseErr)},
-				})
-				return
-			}
-		} else {
-			var dlErr error
-			imgData, dlErr = client.DownloadFile(ctx, req.InputReference)
-			if dlErr != nil {
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error": &model.TaskErrorInfo{Message: fmt.Sprintf("下载参考图片失败: %v", dlErr)},
-				})
-				return
-			}
-			ext = sora.ExtFromURL(req.InputReference, ".png")
-		}
-		mediaID, err = client.UploadImage(ctx, account.AccessToken, imgData, "reference"+ext)
-		if err != nil {
-			h.handleSubmitError(c, account, err)
-			return
-		}
-	}
-
-	var soraTaskID string
-
-	// Remix 模式：基于已有视频重新创建
-	if req.RemixTarget != "" {
-		remixTargetID := sora.ExtractRemixID(req.RemixTarget)
-		if remixTargetID == "" {
+	var imgData []byte
+	var ext string
+	if sora.IsDataURI(inputRef) {
+		var parseErr error
+		imgData, ext, parseErr = sora.ParseDataURI(inputRef)
+		if parseErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error": &model.TaskErrorInfo{Message: "无效的 remix_target，需要 Sora 分享链接或 s_xxx 格式 ID"},
+				"error": &model.TaskErrorInfo{Message: fmt.Sprintf("解析参考图片 base64 失败: %v", parseErr)},
 			})
-			return
+			return "", parseErr
 		}
-		soraTaskID, err = client.RemixVideo(
-			ctx, account.AccessToken, sentinel,
-			remixTargetID, prompt, params.Orientation, params.NFrames, styleID,
-		)
-	} else if sora.IsStoryboardPrompt(prompt) {
-		// 分镜模式：自动检测 [Ns] 格式的 prompt
-		soraTaskID, err = client.CreateStoryboardTask(
-			ctx, account.AccessToken, sentinel,
-			prompt, params.Orientation, params.NFrames, mediaID, styleID,
-		)
 	} else {
-		// 普通/图生视频模式
-		soraTaskID, err = client.CreateVideoTaskWithOptions(
-			ctx, account.AccessToken, sentinel,
-			prompt, params.Orientation, params.NFrames,
-			params.Model, params.Size, mediaID, styleID,
-		)
+		var dlErr error
+		imgData, dlErr = client.DownloadFile(ctx, inputRef)
+		if dlErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": &model.TaskErrorInfo{Message: fmt.Sprintf("下载参考图片失败: %v", dlErr)},
+			})
+			return "", dlErr
+		}
+		ext = sora.ExtFromURL(inputRef, ".png")
 	}
 
+	mediaID, err := client.UploadImage(ctx, account.AccessToken, imgData, "reference"+ext)
 	if err != nil {
 		h.handleSubmitError(c, account, err)
-		return
+		return "", err
 	}
+	return mediaID, nil
+}
 
-	// 创建内部任务记录
+// finishTask 公共收尾逻辑：创建任务记录、启动轮询、返回响应
+func (h *VideoHandler) finishTask(c *gin.Context, soraTaskID string, account *model.SoraAccount, modelName, prompt string, params *model.ModelParams) {
 	taskID := "task_" + uuid.New().String()[:8]
 	task := &model.SoraTask{
 		ID:         taskID,
 		SoraTaskID: soraTaskID,
 		AccountID:  account.ID,
 		Type:       "video",
-		Model:      req.Model,
-		Prompt:     req.Prompt,
+		Model:      modelName,
+		Prompt:     prompt,
 		Status:     model.TaskStatusQueued,
 	}
 
@@ -172,17 +267,15 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	// 启动后台轮询
 	h.taskStore.StartPolling(task, account)
 
 	log.Printf("[handler] 任务已创建: %s → Sora: %s（账号: %d, 模型: %s）",
-		taskID, soraTaskID, account.ID, req.Model)
+		taskID, soraTaskID, account.ID, modelName)
 
-	// 返回响应
 	c.JSON(http.StatusOK, model.VideoTaskResponse{
 		ID:        taskID,
 		Object:    "video",
-		Model:     req.Model,
+		Model:     modelName,
 		Status:    model.TaskStatusQueued,
 		Progress:  0,
 		CreatedAt: time.Now().Unix(),

@@ -103,17 +103,23 @@ func APIKeyAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// API Key 必须绑定分组才能调用
+		if apiKey.GroupID == nil {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": &model.TaskErrorInfo{Message: "此 API Key 未绑定分组，无法调用接口，请先在管理后台绑定分组"},
+			})
+			return
+		}
+
 		// 更新使用统计
 		now := time.Now()
 		db.Model(&apiKey).Updates(map[string]interface{}{
-			"usage_count": gorm.Expr("usage_count + 1"),
+			"usage_count":  gorm.Expr("usage_count + 1"),
 			"last_used_at": now,
 		})
 
 		// 将绑定的分组 ID 传入上下文，供调度器使用
-		if apiKey.GroupID != nil {
-			c.Set("api_key_group_id", *apiKey.GroupID)
-		}
+		c.Set("api_key_group_id", *apiKey.GroupID)
 
 		c.Next()
 	}

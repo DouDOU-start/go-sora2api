@@ -75,9 +75,9 @@ API Key 可在管理后台的「密钥」页面创建和管理。
   // ── 视频任务 ──
   {
     id: 'videos',
-    title: '视频任务',
+    title: '视频生成',
     group: 'video',
-    description: '视频生成任务的创建、查询和下载。支持文生视频、图生视频、视频 Remix、分镜模式和风格系统。',
+    description: '文生视频和图生视频。通过 style 参数或 prompt 中的 {style} 标记可指定风格。',
     endpoints: [
       {
         id: 'create-video',
@@ -85,19 +85,12 @@ API Key 可在管理后台的「密钥」页面创建和管理。
         path: '/v1/videos',
         title: '创建视频任务',
         dangerWarning: '此操作会创建真实任务并消耗账号配额，确认发送？',
-        description: `提交视频生成任务。支持多种模式：
-
-- **文生视频**：仅传 model + prompt
-- **图生视频**：额外传 input_reference（图片 URL 或 base64 data URI，支持 PNG/JPEG/WebP）
-- **视频 Remix**：传 remix_target（Sora 分享链接或 s_xxx 格式 ID），基于已有视频重新创作
-- **分镜模式**：prompt 中使用 \`[Ns]\` 格式自动触发，如 \`[5.0s]猫在奔跑 [5.0s]猫在睡觉\`
-- **风格**：通过 style 参数或在 prompt 中用 \`{style}\` 标记指定`,
+        description: `提交视频生成任务。支持文生视频（仅 model + prompt）和图生视频（额外传 input_reference）。`,
         bodyParams: [
           { name: 'model', type: 'string', required: true, description: '模型名称，如 sora-2-landscape-10s' },
           { name: 'prompt', type: 'string', required: true, description: '视频生成提示词' },
           { name: 'input_reference', type: 'string', required: false, description: '参考图片 URL 或 base64 data URI（图生视频，支持 PNG/JPEG/WebP）' },
           { name: 'style', type: 'string', required: false, description: '视频风格（如 anime, retro, comic 等，见模型速查表）' },
-          { name: 'remix_target', type: 'string', required: false, description: 'Remix 目标视频 ID 或 Sora 分享链接' },
         ],
         responseExample: `{
   "id": "task_a1b2c3d4",
@@ -152,6 +145,74 @@ API Key 可在管理后台的「密钥」页面创建和管理。
         ],
         responseExample: `// Content-Type: video/mp4
 // 返回视频二进制流`,
+      },
+    ],
+  },
+  // ── Remix 视频 ──
+  {
+    id: 'remix',
+    title: 'Remix 视频',
+    group: 'video',
+    description: '基于已有 Sora 视频进行二次创作。需要提供原视频的分享链接或 ID。',
+    endpoints: [
+      {
+        id: 'create-remix',
+        method: 'POST',
+        path: '/v1/videos/remix',
+        title: '创建 Remix 任务',
+        dangerWarning: '此操作会创建真实任务并消耗账号配额，确认发送？',
+        description: '基于已有 Sora 视频重新创作。remix_target 支持 Sora 分享链接（如 `https://sora.com/g/s_xxx`）或直接传 `s_xxx` 格式 ID。',
+        bodyParams: [
+          { name: 'model', type: 'string', required: true, description: '模型名称（决定时长和分辨率）' },
+          { name: 'prompt', type: 'string', required: true, description: '重新创作的提示词' },
+          { name: 'remix_target', type: 'string', required: true, description: 'Sora 分享链接或 s_xxx 格式视频 ID' },
+          { name: 'style', type: 'string', required: false, description: '视频风格' },
+        ],
+        responseExample: `{
+  "id": "task_e5f6g7h8",
+  "object": "video",
+  "model": "sora-2-landscape-10s",
+  "status": "queued",
+  "progress": 0,
+  "created_at": 1709251234,
+  "size": "1280x720"
+}`,
+      },
+    ],
+  },
+  // ── 分镜视频 ──
+  {
+    id: 'storyboard',
+    title: '分镜视频',
+    group: 'video',
+    description: '通过分镜脚本生成多段式视频。使用 [Ns] 格式定义每个镜头的时长和内容。',
+    endpoints: [
+      {
+        id: 'create-storyboard',
+        method: 'POST',
+        path: '/v1/videos/storyboard',
+        title: '创建分镜任务',
+        dangerWarning: '此操作会创建真实任务并消耗账号配额，确认发送？',
+        description: `使用分镜脚本生成视频。prompt 使用 \`[Ns]\` 格式定义每个镜头：
+
+\`[5.0s]猫在草地上奔跑 [5.0s]猫跳上围墙眺望远方\`
+
+可在分镜前添加总体描述作为全局指导。`,
+        bodyParams: [
+          { name: 'model', type: 'string', required: true, description: '模型名称（决定时长和分辨率）' },
+          { name: 'prompt', type: 'string', required: true, description: '分镜格式提示词，如 [5.0s]场景1 [5.0s]场景2' },
+          { name: 'input_reference', type: 'string', required: false, description: '参考图片 URL 或 base64 data URI' },
+          { name: 'style', type: 'string', required: false, description: '视频风格' },
+        ],
+        responseExample: `{
+  "id": "task_i9j0k1l2",
+  "object": "video",
+  "model": "sora-2-landscape-10s",
+  "status": "queued",
+  "progress": 0,
+  "created_at": 1709251234,
+  "size": "1280x720"
+}`,
       },
     ],
   },

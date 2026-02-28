@@ -27,6 +27,7 @@ const inputBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | 
 
 export default function Docs() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('docs_api_key') || '')
+  const [showKey, setShowKey] = useState(false)
 
   const setAndPersistKey = (v: string) => {
     setApiKey(v)
@@ -59,7 +60,7 @@ export default function Docs() {
           </div>
           <div className="flex-1 min-w-0">
             <input
-              type="password"
+              type={showKey ? 'text' : 'password'}
               value={apiKey}
               onChange={(e) => setAndPersistKey(e.target.value)}
               placeholder="输入 API Key 以启用在线测试（sk-...）"
@@ -69,6 +70,28 @@ export default function Docs() {
               onBlur={inputBlur}
             />
           </div>
+          {apiKey && (
+            <button
+              onClick={() => setShowKey(!showKey)}
+              className="p-2 rounded-lg cursor-pointer transition-colors flex-shrink-0"
+              style={{ color: 'var(--text-tertiary)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)' }}
+              title={showKey ? '隐藏' : '显示'}
+            >
+              {showKey ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
+          )}
           {apiKey && (
             <button
               onClick={() => setAndPersistKey('')}
@@ -280,7 +303,9 @@ function ApiTester({
     setSending(true)
     setResult(null)
     const start = performance.now()
-    const isDownload = ep.id === 'download-video'
+    const isDownloadVideo = ep.id === 'download-video'
+    const isDownloadImage = ep.id === 'download-image'
+    const isBinary = isDownloadVideo || isDownloadImage
 
     try {
       const config: AxiosRequestConfig = {
@@ -288,7 +313,7 @@ function ApiTester({
         url: buildUrl(),
         headers: { Authorization: `Bearer ${apiKey}` },
       }
-      if (isDownload) config.responseType = 'blob'
+      if (isBinary) config.responseType = 'blob'
 
       if (ep.method === 'POST' || ep.method === 'PUT') {
         const data: Record<string, string | number> = {}
@@ -305,7 +330,7 @@ function ApiTester({
       const res = await axios.request(config)
       const elapsed = Math.round(performance.now() - start)
 
-      if (isDownload) {
+      if (isDownloadVideo) {
         const blob = res.data as Blob
         const a = document.createElement('a')
         a.href = URL.createObjectURL(blob)
@@ -313,6 +338,10 @@ function ApiTester({
         a.click()
         URL.revokeObjectURL(a.href)
         setResult({ status: res.status, time: elapsed, body: `视频已下载 (${(blob.size / 1024 / 1024).toFixed(2)} MB)` })
+      } else if (isDownloadImage) {
+        const blob = res.data as Blob
+        const url = URL.createObjectURL(blob)
+        setResult({ status: res.status, time: elapsed, body: `__IMAGE__${url}` })
       } else {
         setResult({ status: res.status, time: elapsed, body: JSON.stringify(res.data, null, 2) })
       }
@@ -495,7 +524,18 @@ function ApiTester({
               </span>
               <span className="text-[11px] font-mono" style={{ color: 'var(--text-tertiary)' }}>{result.time}ms</span>
             </div>
-            <CodeBlock code={result.body} />
+            {result.body.startsWith('__IMAGE__') ? (
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-default)' }}>
+                <img
+                  src={result.body.slice('__IMAGE__'.length)}
+                  alt="下载的图片"
+                  className="max-w-full h-auto"
+                  style={{ display: 'block' }}
+                />
+              </div>
+            ) : (
+              <CodeBlock code={result.body} />
+            )}
           </motion.div>
         )}
       </div>
@@ -567,8 +607,19 @@ function ParamTable({ title, params }: { title: string; params: { name: string; 
 
 function CodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false)
-  const copy = () => {
-    navigator.clipboard.writeText(code)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code)
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = code
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }

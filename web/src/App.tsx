@@ -8,6 +8,7 @@ import AccountList from './pages/AccountList'
 import GroupList from './pages/GroupList'
 import APIKeyList from './pages/APIKeyList'
 import TaskList from './pages/TaskList'
+import TaskDetail from './pages/TaskDetail'
 import Settings from './pages/Settings'
 import Docs from './pages/Docs'
 
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/groups" element={<GroupList />} />
           <Route path="/api-keys" element={<APIKeyList />} />
           <Route path="/tasks" element={<TaskList />} />
+          <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/docs" element={<Docs />} />
         </Route>

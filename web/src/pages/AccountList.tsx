@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { listAllAccounts, createAccount, updateAccount, deleteAccount, refreshAccountToken, getAccountStatus } from '../api/account'
+import { listAllAccounts, createAccount, updateAccount, deleteAccount, refreshAccountToken, getAccountStatus, revealAccountTokens } from '../api/account'
 import { listGroups } from '../api/group'
 import type { SoraAccount, CreateAccountRequest, SoraAccountGroup } from '../types/account'
 import GlassCard from '../components/ui/GlassCard'
@@ -46,6 +46,7 @@ export default function AccountList() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
   const [confirmState, setConfirmState] = useState<{ open: boolean; id: number }>({ open: false, id: 0 })
+  const [revealedTokens, setRevealedTokens] = useState<Record<number, { access_token: string; refresh_token: string }>>({})
 
   const reload = useCallback(() => setRefreshKey((k) => k + 1), [])
 
@@ -118,6 +119,39 @@ export default function AccountList() {
       toast.error(getErrorMessage(err, 'Token 续期失败'))
     }
     setActionLoading(prev => ({ ...prev, [`refresh-${id}`]: false }))
+  }
+
+  const handleRevealTokens = async (id: number) => {
+    try {
+      const res = await revealAccountTokens(id)
+      setRevealedTokens((prev) => ({ ...prev, [id]: res.data }))
+    } catch {
+      toast.error('获取 Token 失败')
+    }
+  }
+
+  const handleHideTokens = (id: number) => {
+    setRevealedTokens((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
+
+  const copyText = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    toast.success(`${label} 已复制`)
   }
 
   const handleSync = async (id: number) => {
@@ -224,6 +258,36 @@ export default function AccountList() {
                   <InfoItem label="最后使用" value={timeAgo(acc.last_used_at)} />
                 </div>
 
+                {/* Token 详情 */}
+                {revealedTokens[acc.id] && (
+                  <div
+                    className="mb-2 px-3 py-2.5 rounded-lg space-y-2"
+                    style={{ background: 'var(--bg-inset)', border: '1px solid var(--border-default)' }}
+                  >
+                    <TokenRow
+                      label="AT"
+                      value={revealedTokens[acc.id].access_token}
+                      onCopy={() => copyText(revealedTokens[acc.id].access_token, 'Access Token')}
+                    />
+                    <TokenRow
+                      label="RT"
+                      value={revealedTokens[acc.id].refresh_token}
+                      onCopy={() => copyText(revealedTokens[acc.id].refresh_token, 'Refresh Token')}
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => handleHideTokens(acc.id)}
+                        className="text-[11px] px-2 py-0.5 rounded transition-colors cursor-pointer"
+                        style={{ color: 'var(--text-tertiary)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-elevated)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                      >
+                        收起
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* 错误信息 */}
                 {acc.last_error && (
                   <div
@@ -252,6 +316,10 @@ export default function AccountList() {
                     title="同步配额和订阅信息"
                     loading={actionLoading[`sync-${acc.id}`]}
                     onClick={() => handleSync(acc.id)}
+                  />
+                  <ActionBtn
+                    label={revealedTokens[acc.id] ? '隐藏 Token' : '查看 Token'}
+                    onClick={() => revealedTokens[acc.id] ? handleHideTokens(acc.id) : handleRevealTokens(acc.id)}
                   />
                   <ActionBtn label="编辑" onClick={() => handleEdit(acc)} />
                   <div className="flex-1" />
@@ -372,6 +440,37 @@ function InfoItem({ label, value, color, bold }: { label: string; value: string;
     <div style={{ color: 'var(--text-tertiary)' }}>
       {label}{' '}
       <span style={{ color: color || 'var(--text-secondary)', fontWeight: bold ? 500 : 400 }}>{value}</span>
+    </div>
+  )
+}
+
+function TokenRow({ label, value, onCopy }: { label: string; value: string; onCopy: () => void }) {
+  if (!value) return (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] font-medium w-6 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{label}</span>
+      <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>-</span>
+    </div>
+  )
+  return (
+    <div className="flex items-start gap-2">
+      <span className="text-[11px] font-medium w-6 flex-shrink-0 pt-0.5" style={{ color: 'var(--text-tertiary)' }}>{label}</span>
+      <code
+        className="flex-1 text-[11px] break-all leading-relaxed"
+        style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}
+      >
+        {value}
+      </code>
+      <button
+        onClick={onCopy}
+        className="p-1 rounded transition-colors cursor-pointer flex-shrink-0"
+        style={{ color: 'var(--accent)' }}
+        title="复制"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+        </svg>
+      </button>
     </div>
   )
 }

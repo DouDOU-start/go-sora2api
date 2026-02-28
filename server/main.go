@@ -44,9 +44,13 @@ func main() {
 		log.Fatalf("[main] 数据库初始化失败: %v", err)
 	}
 
-	// 自动迁移
-	if err := db.AutoMigrate(&model.SoraAccountGroup{}, &model.SoraAccount{}, &model.SoraTask{}, &model.SoraSetting{}, &model.SoraAPIKey{}, &model.SoraCharacter{}); err != nil {
-		log.Fatalf("[main] 数据库迁移失败: %v", err)
+	// 自动迁移（可通过配置 auto_migrate: false 关闭）
+	if cfg.Database.AutoMigrate == nil || *cfg.Database.AutoMigrate {
+		if err := db.AutoMigrate(&model.SoraAccountGroup{}, &model.SoraAccount{}, &model.SoraTask{}, &model.SoraSetting{}, &model.SoraAPIKey{}, &model.SoraCharacter{}); err != nil {
+			log.Fatalf("[main] 数据库迁移失败: %v", err)
+		}
+	} else {
+		log.Println("[db] 已跳过自动迁移（auto_migrate: false）")
 	}
 
 	// 初始化设置存储（从数据库加载，首次启动写入默认值）
@@ -163,30 +167,26 @@ func migrateAPIKeys(db *gorm.DB) {
 
 // initDB 初始化 PostgreSQL 连接（数据库不存在时自动创建）
 func initDB(dbCfg config.DatabaseConfig) (*gorm.DB, error) {
-	// 先用 database/sql 探测连接，不经过 GORM（避免打印预期的错误日志）
-	probe, err := sql.Open("pgx", dbCfg.URL)
-	if err == nil {
-		err = probe.Ping()
-		probe.Close()
-	}
-
-	if err != nil {
-		if strings.Contains(err.Error(), "does not exist") {
-			if createErr := createDatabase(dbCfg.URL); createErr != nil {
-				return nil, fmt.Errorf("自动创建数据库失败: %w", createErr)
-			}
-		} else {
-			return nil, fmt.Errorf("连接数据库失败: %w", err)
-		}
-	}
-
-	// 正式连接
 	logLevel := parseDBLogLevel(dbCfg.LogLevel)
 	db, err := gorm.Open(postgres.Open(dbCfg.URL), &gorm.Config{
 		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("连接数据库失败: %w", err)
+		// 数据库不存在时尝试自动创建
+		if strings.Contains(err.Error(), "does not exist") {
+			if createErr := createDatabase(dbCfg.URL); createErr != nil {
+				return nil, fmt.Errorf("自动创建数据库失败: %w", createErr)
+			}
+			// 重新连接
+			db, err = gorm.Open(postgres.Open(dbCfg.URL), &gorm.Config{
+				Logger: logger.Default.LogMode(logLevel),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("连接数据库失败: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("连接数据库失败: %w", err)
+		}
 	}
 
 	log.Printf("[db] 数据库连接成功")

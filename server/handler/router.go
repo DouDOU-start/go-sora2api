@@ -41,8 +41,10 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 
 	api := r.Group("/v1", APIKeyAuthMiddleware(cfg.DB))
 	{
-		// 视频任务（含风格/Remix/分镜）
+		// 视频任务
 		api.POST("/videos", videoHandler.CreateTask)
+		api.POST("/videos/remix", videoHandler.RemixTask)
+		api.POST("/videos/storyboard", videoHandler.StoryboardTask)
 		api.GET("/videos/:id", videoHandler.GetTaskStatus)
 		api.GET("/videos/:id/content", videoHandler.DownloadVideo)
 
@@ -99,10 +101,12 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 		admin.DELETE("/accounts/:id", adminHandler.DeleteAccountDirect)
 		admin.POST("/accounts/:id/refresh", adminHandler.RefreshAccountTokenDirect)
 		admin.GET("/accounts/:id/status", adminHandler.GetAccountStatusDirect)
+		admin.GET("/accounts/:id/tokens", adminHandler.RevealAccountTokens)
 
 		// 任务管理
 		admin.GET("/tasks", adminHandler.ListTasks)
 		admin.GET("/tasks/:id", adminHandler.GetTask)
+		admin.GET("/tasks/:id/content", adminHandler.DownloadTaskContent)
 	}
 
 	return r

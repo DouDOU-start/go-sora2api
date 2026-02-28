@@ -37,7 +37,6 @@ export default function APIKeyList() {
   const [submitting, setSubmitting] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [confirmState, setConfirmState] = useState<{ open: boolean; id: number }>({ open: false, id: 0 })
-  const [newKeyVisible, setNewKeyVisible] = useState<{ id: number; key: string } | null>(null)
   const [revealedKeys, setRevealedKeys] = useState<Record<number, string>>({})
 
   const reload = useCallback(() => setRefreshKey((k) => k + 1), [])
@@ -75,12 +74,8 @@ export default function APIKeyList() {
         toast.success('API Key 已更新')
         closeForm()
       } else {
-        const res = await createAPIKey(data)
+        await createAPIKey(data)
         toast.success('API Key 已创建')
-        // 显示新创建的完整 Key
-        if (res.data?.key) {
-          setNewKeyVisible({ id: res.data.id, key: res.data.key })
-        }
         closeForm()
       }
       reload()
@@ -123,8 +118,19 @@ export default function APIKeyList() {
     })
   }
 
-  const copyKey = (key: string) => {
-    navigator.clipboard.writeText(key)
+  const copyKey = async (key: string) => {
+    try {
+      await navigator.clipboard.writeText(key)
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = key
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
     toast.success('已复制到剪贴板')
   }
 
@@ -239,12 +245,20 @@ export default function APIKeyList() {
                         </button>
                       )}
                     </span>
-                    {k.group_name && (
+                    {k.group_name ? (
                       <span className="inline-flex items-center gap-1">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
                         </svg>
                         {k.group_name}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1" style={{ color: 'var(--warning, #e6a700)' }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                          <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                        未绑定分组
                       </span>
                     )}
                     <span>调用 {k.usage_count} 次</span>
@@ -301,49 +315,6 @@ export default function APIKeyList() {
         </div>
       )}
 
-      {/* 新建 Key 后显示完整密钥 */}
-      <FormModal
-        open={!!newKeyVisible}
-        title="密钥已创建"
-        onClose={() => setNewKeyVisible(null)}
-      >
-        <div className="space-y-3">
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            请立即复制保存，关闭后将无法再次查看完整密钥。
-          </p>
-          <div
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg"
-            style={{ background: 'var(--bg-inset)', border: '1px solid var(--border-default)' }}
-          >
-            <code className="flex-1 text-sm font-mono break-all" style={{ color: 'var(--text-primary)', fontSize: '13px' }}>
-              {newKeyVisible?.key}
-            </code>
-            <button
-              onClick={() => newKeyVisible && copyKey(newKeyVisible.key)}
-              className="p-1.5 rounded-lg transition-colors cursor-pointer flex-shrink-0"
-              style={{ color: 'var(--accent)' }}
-              title="复制"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-              </svg>
-            </button>
-          </div>
-          <div className="flex justify-end pt-1">
-            <button
-              onClick={() => setNewKeyVisible(null)}
-              className="px-5 py-2 rounded-xl text-sm font-medium text-white transition-all cursor-pointer"
-              style={{ background: 'var(--accent)' }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-hover)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
-            >
-              已复制，关闭
-            </button>
-          </div>
-        </div>
-      </FormModal>
-
       {/* 添加/编辑弹窗 */}
       <FormModal
         open={showForm}
@@ -383,18 +354,19 @@ export default function APIKeyList() {
             <select
               value={form.group_id}
               onChange={(e) => setForm({ ...form, group_id: e.target.value })}
+              required
               className="w-full px-3 py-2.5 text-sm outline-none transition-all cursor-pointer"
               style={inputStyle}
               onFocus={inputFocus}
               onBlur={inputBlur}
             >
-              <option value="">不绑定（可使用所有账号）</option>
+              <option value="" disabled>请选择分组</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>{g.name}（{g.account_count} 个账号）</option>
               ))}
             </select>
             <p className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-              绑定后，此 Key 仅可使用该分组内的账号
+              API Key 必须绑定分组，仅可调度该分组内的账号
             </p>
           </div>
           {editId && (

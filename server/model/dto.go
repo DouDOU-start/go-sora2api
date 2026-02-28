@@ -8,14 +8,29 @@ import (
 
 // ---- API 请求/响应 ----
 
-// VideoSubmitRequest 创建任务请求（兼容 K8Ray Creator 的 SoraSubmitRequest）
+// VideoSubmitRequest 创建视频任务请求
 type VideoSubmitRequest struct {
 	Model          string `json:"model" binding:"required"`
 	Prompt         string `json:"prompt" binding:"required"`
 	Duration       int    `json:"duration"`
 	InputReference string `json:"input_reference,omitempty"` // 图生视频参考图（URL 或 base64 data URI）
 	Style          string `json:"style,omitempty"`           // 视频风格（如 anime, retro 等）
-	RemixTarget    string `json:"remix_target,omitempty"`    // Remix 目标视频 ID 或分享链接
+}
+
+// RemixSubmitRequest Remix 视频请求
+type RemixSubmitRequest struct {
+	Model       string `json:"model" binding:"required"`
+	Prompt      string `json:"prompt" binding:"required"`
+	RemixTarget string `json:"remix_target" binding:"required"` // Sora 分享链接或 s_xxx 格式 ID
+	Style       string `json:"style,omitempty"`
+}
+
+// StoryboardSubmitRequest 分镜视频请求
+type StoryboardSubmitRequest struct {
+	Model          string `json:"model" binding:"required"`
+	Prompt         string `json:"prompt" binding:"required"`         // 分镜格式: [5.0s]场景1 [5.0s]场景2
+	InputReference string `json:"input_reference,omitempty"`         // 参考图（URL 或 base64 data URI）
+	Style          string `json:"style,omitempty"`
 }
 
 // VideoTaskResponse 任务响应（兼容 K8Ray Creator 的 SoraTaskResponse）

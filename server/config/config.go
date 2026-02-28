@@ -24,8 +24,9 @@ type ServerConfig struct {
 
 // DatabaseConfig 数据库配置
 type DatabaseConfig struct {
-	URL      string `yaml:"url"`       // PostgreSQL 连接串
-	LogLevel string `yaml:"log_level"` // silent/error/warn/info
+	URL         string `yaml:"url"`          // PostgreSQL 连接串
+	LogLevel    string `yaml:"log_level"`    // silent/error/warn/info
+	AutoMigrate *bool  `yaml:"auto_migrate"` // 是否自动迁移表结构（默认 true）
 }
 
 // DefaultConfig 返回默认配置

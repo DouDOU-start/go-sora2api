@@ -140,8 +140,12 @@ func (ts *TaskStore) pollVideoTask(ctx context.Context, client *sora.Client, at 
 		}
 		ts.completeTask(task.ID, downloadURL, "")
 
-		// 异步更新账号配额
-		go ts.syncAccountCredit(ctx, client, at, task.AccountID)
+		// 异步更新账号配额（使用独立 context，避免轮询结束后被取消）
+		creditCtx, creditCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		go func() {
+			defer creditCancel()
+			ts.syncAccountCredit(creditCtx, client, at, task.AccountID)
+		}()
 	}
 }
 
@@ -159,8 +163,12 @@ func (ts *TaskStore) pollImageTask(ctx context.Context, client *sora.Client, at 
 	if result.Done {
 		ts.completeTask(task.ID, "", result.ImageURL)
 
-		// 异步更新账号配额
-		go ts.syncAccountCredit(ctx, client, at, task.AccountID)
+		// 异步更新账号配额（使用独立 context，避免轮询结束后被取消）
+		creditCtx, creditCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		go func() {
+			defer creditCancel()
+			ts.syncAccountCredit(creditCtx, client, at, task.AccountID)
+		}()
 	}
 }
 
@@ -245,27 +253,36 @@ func (ts *TaskStore) RecoverInProgressTasks() {
 	}
 }
 
+// fetchVideoDownloadURL 获取视频下载链接（通过 Sora API）
+func (ts *TaskStore) fetchVideoDownloadURL(ctx context.Context, task *model.SoraTask) (string, error) {
+	var account model.SoraAccount
+	if err := ts.db.Where("id = ?", task.AccountID).First(&account).Error; err != nil {
+		return "", fmt.Errorf("找不到关联账号: %w", err)
+	}
+	client, err := sora.New(ts.scheduler.GetProxyURL())
+	if err != nil {
+		return "", fmt.Errorf("创建 Sora 客户端失败: %w", err)
+	}
+	url, err := client.GetDownloadURL(ctx, account.AccessToken, task.SoraTaskID)
+	if err != nil {
+		return "", fmt.Errorf("获取下载链接失败: %w", err)
+	}
+	// 缓存下载链接
+	ts.db.Model(&model.SoraTask{}).Where("id = ?", task.ID).Update("download_url", url)
+	return url, nil
+}
+
 // DownloadVideo 下载视频并流式转发
 func (ts *TaskStore) DownloadVideo(ctx context.Context, task *model.SoraTask) (io.ReadCloser, int64, string, error) {
 	downloadURL := task.DownloadURL
 
-	// 如果没有缓存的下载链接，尝试实时获取
+	// 如果没有缓存的下载链接，获取一个
 	if downloadURL == "" {
-		var account model.SoraAccount
-		if err := ts.db.Where("id = ?", task.AccountID).First(&account).Error; err != nil {
-			return nil, 0, "", fmt.Errorf("找不到关联账号: %w", err)
-		}
-		client, err := sora.New(ts.scheduler.GetProxyURL())
+		url, err := ts.fetchVideoDownloadURL(ctx, task)
 		if err != nil {
-			return nil, 0, "", fmt.Errorf("创建 Sora 客户端失败: %w", err)
-		}
-		url, err := client.GetDownloadURL(ctx, account.AccessToken, task.SoraTaskID)
-		if err != nil {
-			return nil, 0, "", fmt.Errorf("获取下载链接失败: %w", err)
+			return nil, 0, "", err
 		}
 		downloadURL = url
-		// 缓存下载链接
-		ts.db.Model(&model.SoraTask{}).Where("id = ?", task.ID).Update("download_url", downloadURL)
 	}
 
 	// HTTP GET 下载
@@ -273,9 +290,25 @@ func (ts *TaskStore) DownloadVideo(ctx context.Context, task *model.SoraTask) (i
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("下载视频失败: %w", err)
 	}
+
+	// 链接过期（403/404 等），清除缓存并重新获取
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, 0, "", fmt.Errorf("下载视频返回 %d", resp.StatusCode)
+		log.Printf("[download] 视频 %s 链接已过期（%d），重新获取", task.ID, resp.StatusCode)
+		ts.db.Model(&model.SoraTask{}).Where("id = ?", task.ID).Update("download_url", "")
+
+		newURL, err := ts.fetchVideoDownloadURL(ctx, task)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		resp, err = http.Get(newURL) //nolint:gosec
+		if err != nil {
+			return nil, 0, "", fmt.Errorf("下载视频失败: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, 0, "", fmt.Errorf("下载视频返回 %d", resp.StatusCode)
+		}
 	}
 
 	contentType := resp.Header.Get("Content-Type")
@@ -284,6 +317,25 @@ func (ts *TaskStore) DownloadVideo(ctx context.Context, task *model.SoraTask) (i
 	}
 
 	return resp.Body, resp.ContentLength, contentType, nil
+}
+
+// fetchImageURL 通过 Sora API 重新获取图片链接
+func (ts *TaskStore) fetchImageURL(ctx context.Context, task *model.SoraTask) (string, error) {
+	var account model.SoraAccount
+	if err := ts.db.Where("id = ?", task.AccountID).First(&account).Error; err != nil {
+		return "", fmt.Errorf("找不到关联账号: %w", err)
+	}
+	client, err := sora.New(ts.scheduler.GetProxyURL())
+	if err != nil {
+		return "", fmt.Errorf("创建 Sora 客户端失败: %w", err)
+	}
+	url, err := client.GetDownloadURL(ctx, account.AccessToken, task.SoraTaskID)
+	if err != nil {
+		return "", fmt.Errorf("获取图片链接失败: %w", err)
+	}
+	// 更新缓存
+	ts.db.Model(&model.SoraTask{}).Where("id = ?", task.ID).Update("image_url", url)
+	return url, nil
 }
 
 // DownloadImage 下载图片并流式转发
@@ -297,9 +349,24 @@ func (ts *TaskStore) DownloadImage(ctx context.Context, task *model.SoraTask) (i
 	if err != nil {
 		return nil, 0, "", fmt.Errorf("下载图片失败: %w", err)
 	}
+
+	// 链接过期，重新获取
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, 0, "", fmt.Errorf("下载图片返回 %d", resp.StatusCode)
+		log.Printf("[download] 图片 %s 链接已过期（%d），重新获取", task.ID, resp.StatusCode)
+
+		newURL, err := ts.fetchImageURL(ctx, task)
+		if err != nil {
+			return nil, 0, "", err
+		}
+		resp, err = http.Get(newURL) //nolint:gosec
+		if err != nil {
+			return nil, 0, "", fmt.Errorf("下载图片失败: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, 0, "", fmt.Errorf("下载图片返回 %d", resp.StatusCode)
+		}
 	}
 
 	contentType := resp.Header.Get("Content-Type")

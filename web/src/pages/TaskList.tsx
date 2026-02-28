@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { listTasks } from '../api/task'
 import type { SoraTask } from '../types/task'
 import GlassCard from '../components/ui/GlassCard'
 import StatusBadge from '../components/ui/StatusBadge'
 import LoadingState from '../components/ui/LoadingState'
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 
@@ -16,12 +17,12 @@ const statusFilters = [
 ]
 
 export default function TaskList() {
+  const navigate = useNavigate()
   const [tasks, setTasks] = useState<SoraTask[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
-  const [expandedTask, setExpandedTask] = useState<string | null>(null)
   const pageSize = 20
   const mountedRef = useRef(true)
 
@@ -112,7 +113,7 @@ export default function TaskList() {
             <GlassCard key={task.id} delay={i} className="overflow-hidden">
               <div
                 className="p-4 sm:p-5 cursor-pointer transition-colors"
-                onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
+                onClick={() => navigate(`/tasks/${task.id}`)}
                 style={{}}
                 onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-surface-hover)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
@@ -127,8 +128,9 @@ export default function TaskList() {
                       >
                         {task.id}
                       </p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                      <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>
                         {task.model} · {task.type}
+                        {task.prompt && ` · ${task.prompt.slice(0, 40)}${task.prompt.length > 40 ? '...' : ''}`}
                       </p>
                     </div>
                   </div>
@@ -163,70 +165,14 @@ export default function TaskList() {
                       stroke="currentColor"
                       strokeWidth="2"
                       strokeLinecap="round"
-                      className="transition-transform duration-200"
-                      style={{
-                        color: 'var(--text-tertiary)',
-                        transform: expandedTask === task.id ? 'rotate(180deg)' : 'rotate(0)',
-                      }}
+                      strokeLinejoin="round"
+                      style={{ color: 'var(--text-tertiary)' }}
                     >
-                      <polyline points="6 9 12 15 18 9" />
+                      <polyline points="9 6 15 12 9 18" />
                     </svg>
                   </div>
                 </div>
               </div>
-
-              {/* 展开详情 */}
-              <AnimatePresence>
-                {expandedTask === task.id && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div
-                      className="px-4 sm:px-5 py-4 text-sm space-y-3"
-                      style={{ borderTop: '1px solid var(--border-subtle)' }}
-                    >
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <InfoRow label="Sora ID" value={task.sora_task_id} mono />
-                        <InfoRow label="账号 ID" value={String(task.account_id)} />
-                        <InfoRow label="类型" value={task.type} />
-                        <InfoRow
-                          label="创建时间"
-                          value={formatDistanceToNow(new Date(task.created_at), { addSuffix: true, locale: zhCN })}
-                        />
-                      </div>
-
-                      {task.prompt && (
-                        <div>
-                          <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Prompt</p>
-                          <div
-                            className="text-sm p-3 rounded-xl whitespace-pre-wrap break-all leading-relaxed"
-                            style={{
-                              background: 'var(--bg-inset)',
-                              color: 'var(--text-secondary)',
-                              border: '1px solid var(--border-subtle)',
-                            }}
-                          >
-                            {task.prompt}
-                          </div>
-                        </div>
-                      )}
-
-                      {task.error_message && (
-                        <div
-                          className="px-3 py-2.5 rounded-xl text-xs"
-                          style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}
-                        >
-                          {task.error_message}
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </GlassCard>
           ))}
         </div>
@@ -264,24 +210,6 @@ export default function TaskList() {
           </button>
         </div>
       )}
-    </div>
-  )
-}
-
-function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-center gap-2 text-[13px]">
-      <span style={{ color: 'var(--text-tertiary)' }}>{label}</span>
-      <span
-        className="truncate"
-        style={{
-          color: 'var(--text-secondary)',
-          fontFamily: mono ? 'var(--font-mono)' : undefined,
-          fontSize: mono ? '12px' : undefined,
-        }}
-      >
-        {value}
-      </span>
     </div>
   )
 }

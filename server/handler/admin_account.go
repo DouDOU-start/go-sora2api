@@ -192,6 +192,22 @@ func (h *AdminHandler) RefreshAccountTokenDirect(c *gin.Context) {
 	c.JSON(http.StatusOK, h.buildAccountResponse(account))
 }
 
+// RevealAccountTokens GET /admin/accounts/:id/tokens — 获取完整 AT 和 RT
+func (h *AdminHandler) RevealAccountTokens(c *gin.Context) {
+	accountID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+
+	var account model.SoraAccount
+	if err := h.db.First(&account, accountID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "账号不存在"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  account.AccessToken,
+		"refresh_token": account.RefreshToken,
+	})
+}
+
 // GetAccountStatusDirect GET /admin/accounts/:id/status
 func (h *AdminHandler) GetAccountStatusDirect(c *gin.Context) {
 	accountID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
