@@ -27,6 +27,13 @@ DEFAULT_PORT=8686
 # 运行时变量
 SERVER_HOST="0.0.0.0"
 SERVER_PORT="$DEFAULT_PORT"
+ADMIN_USER="admin"
+ADMIN_PASS="admin123"
+DB_HOST="localhost"
+DB_PORT="5432"
+DB_USER="postgres"
+DB_PASS="postgres"
+DB_NAME="sora2api"
 
 # ============================================================
 # 工具函数
@@ -213,21 +220,25 @@ setup_directories() {
     mkdir -p "$INSTALL_DIR"
     mkdir -p "$CONFIG_DIR"
 
-    # 如果配置文件不存在，创建默认配置
+    # 如果配置文件不存在，创建配置
     if [ ! -f "$CONFIG_DIR/config.yaml" ]; then
+        local db_url="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable"
         cat > "$CONFIG_DIR/config.yaml" << YAML
 server:
   host: "${SERVER_HOST}"
   port: ${SERVER_PORT}
-  admin_user: "admin"
-  admin_password: "admin123"
+  admin_user: "${ADMIN_USER}"
+  admin_password: "${ADMIN_PASS}"
 
 database:
-  url: "postgres://postgres:postgres@localhost:5432/sora2api?sslmode=disable"
+  url: "${db_url}"
   log_level: "warn"
   auto_migrate: true
 YAML
-        print_info "已创建默认配置: $CONFIG_DIR/config.yaml"
+        chmod 600 "$CONFIG_DIR/config.yaml"
+        print_info "已创建配置: $CONFIG_DIR/config.yaml"
+    else
+        print_warning "配置文件已存在，跳过覆盖: $CONFIG_DIR/config.yaml"
     fi
 
     chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
@@ -291,36 +302,93 @@ install_cli() {
 
 configure_server() {
     if ! is_interactive; then
-        print_info "服务器配置: ${SERVER_HOST}:${SERVER_PORT}（默认）"
+        print_info "使用默认配置（非交互模式）"
         return
     fi
 
+    # ---- 服务器配置 ----
     echo ""
     echo -e "${CYAN}=============================================="
-    echo "  服务器配置"
+    echo "  [1/3] 服务器配置"
     echo "==============================================${NC}"
     echo ""
 
     echo -e "${YELLOW}0.0.0.0 表示监听所有网卡，127.0.0.1 仅本地访问${NC}"
-    read -p "监听地址 [${SERVER_HOST}]: " input_host < /dev/tty
-    [ -n "$input_host" ] && SERVER_HOST="$input_host"
+    read -p "监听地址 [${SERVER_HOST}]: " input < /dev/tty
+    [ -n "$input" ] && SERVER_HOST="$input"
 
-    echo ""
     echo -e "${YELLOW}建议使用 1024-65535 之间的端口${NC}"
     while true; do
-        read -p "端口 [${SERVER_PORT}]: " input_port < /dev/tty
-        if [ -z "$input_port" ]; then
-            break
-        elif validate_port "$input_port"; then
-            SERVER_PORT="$input_port"
-            break
-        else
-            print_error "无效端口号，请输入 1-65535 之间的数字"
+        read -p "监听端口 [${SERVER_PORT}]: " input < /dev/tty
+        if [ -z "$input" ]; then break
+        elif validate_port "$input"; then SERVER_PORT="$input"; break
+        else print_error "无效端口号，请输入 1-65535 之间的数字"
         fi
     done
 
+    # ---- 数据库配置 ----
     echo ""
-    print_info "服务器配置: ${SERVER_HOST}:${SERVER_PORT}"
+    echo -e "${CYAN}=============================================="
+    echo "  [2/3] 数据库配置（PostgreSQL）"
+    echo "==============================================${NC}"
+    echo ""
+
+    read -p "数据库地址 [${DB_HOST}]: " input < /dev/tty
+    [ -n "$input" ] && DB_HOST="$input"
+
+    while true; do
+        read -p "数据库端口 [${DB_PORT}]: " input < /dev/tty
+        if [ -z "$input" ]; then break
+        elif validate_port "$input"; then DB_PORT="$input"; break
+        else print_error "无效端口号"
+        fi
+    done
+
+    read -p "数据库用户名 [${DB_USER}]: " input < /dev/tty
+    [ -n "$input" ] && DB_USER="$input"
+
+    read -p "数据库密码 [${DB_PASS}]: " input < /dev/tty
+    [ -n "$input" ] && DB_PASS="$input"
+
+    read -p "数据库名 [${DB_NAME}]: " input < /dev/tty
+    [ -n "$input" ] && DB_NAME="$input"
+
+    # ---- 管理员配置 ----
+    echo ""
+    echo -e "${CYAN}=============================================="
+    echo "  [3/3] 管理员账号配置"
+    echo "==============================================${NC}"
+    echo ""
+
+    read -p "管理员用户名 [${ADMIN_USER}]: " input < /dev/tty
+    [ -n "$input" ] && ADMIN_USER="$input"
+
+    while true; do
+        read -p "管理员密码 [${ADMIN_PASS}]: " input < /dev/tty
+        if [ -z "$input" ]; then break
+        elif [ ${#input} -lt 6 ]; then print_error "密码至少 6 位"
+        else ADMIN_PASS="$input"; break
+        fi
+    done
+
+    # ---- 配置总览 ----
+    echo ""
+    echo -e "${CYAN}=============================================="
+    echo "  配置总览"
+    echo "==============================================${NC}"
+    echo ""
+    echo "  服务监听:    ${SERVER_HOST}:${SERVER_PORT}"
+    echo "  数据库:      postgres://${DB_USER}:****@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    echo "  管理员:      ${ADMIN_USER} / ****"
+    echo ""
+
+    if is_interactive; then
+        read -p "确认以上配置？[Y/n]: " input < /dev/tty
+        if [[ "$input" =~ ^[Nn]$ ]]; then
+            print_info "已取消，请重新运行安装脚本"
+            exit 0
+        fi
+    fi
 }
 
 get_public_ip() {
@@ -431,11 +499,13 @@ print_completion() {
     print_success "Sora2API 安装完成！"
     echo "=============================================="
     echo ""
-    echo "  安装目录: $INSTALL_DIR"
-    echo "  配置文件: $CONFIG_DIR/config.yaml"
-    echo "  监听地址: ${SERVER_HOST}:${SERVER_PORT}"
+    echo "  安装目录:   $INSTALL_DIR"
+    echo "  配置文件:   $CONFIG_DIR/config.yaml"
+    echo "  监听地址:   ${SERVER_HOST}:${SERVER_PORT}"
+    echo "  数据库:     ${DB_HOST}:${DB_PORT}/${DB_NAME}"
+    echo "  管理员:     ${ADMIN_USER}"
     echo ""
-    echo "  访问地址: http://${display_host}:${SERVER_PORT}"
+    echo "  访问地址:   http://${display_host}:${SERVER_PORT}"
     echo ""
     echo "=============================================="
     echo "  管理命令（sudo sora2api <命令>）"
