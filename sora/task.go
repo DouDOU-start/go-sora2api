@@ -226,6 +226,7 @@ func (c *Client) RefreshAccessToken(ctx context.Context, refreshToken, clientID 
 	}
 
 	headers := map[string]string{
+		"Accept":       "application/json",
 		"Content-Type": "application/json",
 		"User-Agent":   mobileUserAgents[c.randIntn(len(mobileUserAgents))],
 	}
