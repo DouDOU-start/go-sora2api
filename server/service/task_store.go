@@ -285,3 +285,27 @@ func (ts *TaskStore) DownloadVideo(ctx context.Context, task *model.SoraTask) (i
 
 	return resp.Body, resp.ContentLength, contentType, nil
 }
+
+// DownloadImage 下载图片并流式转发
+func (ts *TaskStore) DownloadImage(ctx context.Context, task *model.SoraTask) (io.ReadCloser, int64, string, error) {
+	imageURL := task.ImageURL
+	if imageURL == "" {
+		return nil, 0, "", fmt.Errorf("图片 URL 为空")
+	}
+
+	resp, err := http.Get(imageURL) //nolint:gosec // 来自 Sora 官方的图片链接
+	if err != nil {
+		return nil, 0, "", fmt.Errorf("下载图片失败: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, 0, "", fmt.Errorf("下载图片返回 %d", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/png"
+	}
+
+	return resp.Body, resp.ContentLength, contentType, nil
+}

@@ -100,6 +100,10 @@ func (am *AccountManager) refreshAccountToken(ctx context.Context, acc *model.So
 		return err
 	}
 
+	// 回写到内存对象，确保调用方能拿到最新的 Token
+	acc.AccessToken = newAT
+	acc.RefreshToken = newRT
+
 	updates := map[string]interface{}{
 		"access_token":  newAT,
 		"refresh_token": newRT,
@@ -110,6 +114,7 @@ func (am *AccountManager) refreshAccountToken(ctx context.Context, acc *model.So
 	if acc.Email == "" {
 		if email := model.ExtractEmailFromJWT(newAT); email != "" {
 			updates["email"] = email
+			acc.Email = email
 		}
 	}
 

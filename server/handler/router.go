@@ -34,11 +34,38 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 
 	// API 端点（API Key 认证，从数据库查询）
 	videoHandler := NewVideoHandler(cfg.Scheduler, cfg.TaskStore)
+	imageHandler := NewImageHandler(cfg.Scheduler, cfg.TaskStore)
+	characterHandler := NewCharacterHandler(cfg.Scheduler, cfg.DB)
+	promptHandler := NewPromptHandler(cfg.Scheduler)
+	postHandler := NewPostHandler(cfg.Scheduler, cfg.TaskStore, cfg.DB)
+
 	api := r.Group("/v1", APIKeyAuthMiddleware(cfg.DB))
 	{
+		// 视频任务（含风格/Remix/分镜）
 		api.POST("/videos", videoHandler.CreateTask)
 		api.GET("/videos/:id", videoHandler.GetTaskStatus)
 		api.GET("/videos/:id/content", videoHandler.DownloadVideo)
+
+		// 图片任务
+		api.POST("/images", imageHandler.CreateImageTask)
+		api.GET("/images/:id", imageHandler.GetImageTaskStatus)
+		api.GET("/images/:id/content", imageHandler.DownloadImage)
+
+		// 角色管理
+		api.POST("/characters", characterHandler.CreateCharacter)
+		api.GET("/characters/:id", characterHandler.GetCharacter)
+		api.POST("/characters/:id/public", characterHandler.SetPublic)
+		api.DELETE("/characters/:id", characterHandler.DeleteCharacter)
+
+		// 提示词增强
+		api.POST("/enhance-prompt", promptHandler.EnhancePrompt)
+
+		// 帖子管理
+		api.POST("/posts", postHandler.PublishPost)
+		api.DELETE("/posts/:id", postHandler.DeletePost)
+
+		// 无水印下载
+		api.POST("/watermark-free", postHandler.GetWatermarkFreeURL)
 	}
 
 	// 管理端点（JWT 认证）
@@ -50,12 +77,14 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 		// 系统设置
 		admin.GET("/settings", adminHandler.GetSettings)
 		admin.PUT("/settings", adminHandler.UpdateSettings)
+		admin.POST("/proxy-test", adminHandler.TestProxy)
 
 		// API Key 管理
 		admin.GET("/api-keys", adminHandler.ListAPIKeys)
 		admin.POST("/api-keys", adminHandler.CreateAPIKey)
 		admin.PUT("/api-keys/:id", adminHandler.UpdateAPIKey)
 		admin.DELETE("/api-keys/:id", adminHandler.DeleteAPIKey)
+		admin.GET("/api-keys/:id/reveal", adminHandler.RevealAPIKey)
 
 		// 账号组管理
 		admin.GET("/groups", adminHandler.ListGroups)

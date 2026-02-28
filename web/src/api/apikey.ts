@@ -16,3 +16,7 @@ export function updateAPIKey(id: number, data: CreateAPIKeyRequest) {
 export function deleteAPIKey(id: number) {
   return client.delete(`/admin/api-keys/${id}`)
 }
+
+export function revealAPIKey(id: number) {
+  return client.get<{ key: string }>(`/admin/api-keys/${id}/reveal`)
+}

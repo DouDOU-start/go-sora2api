@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/DouDOU-start/go-sora2api/server/model"
@@ -15,20 +14,20 @@ import (
 	"github.com/google/uuid"
 )
 
-// VideoHandler /v1/videos 核心端点
-type VideoHandler struct {
+// ImageHandler /v1/images 图片生成端点
+type ImageHandler struct {
 	scheduler *service.Scheduler
 	taskStore *service.TaskStore
 }
 
-// NewVideoHandler 创建 VideoHandler
-func NewVideoHandler(scheduler *service.Scheduler, taskStore *service.TaskStore) *VideoHandler {
-	return &VideoHandler{scheduler: scheduler, taskStore: taskStore}
+// NewImageHandler 创建 ImageHandler
+func NewImageHandler(scheduler *service.Scheduler, taskStore *service.TaskStore) *ImageHandler {
+	return &ImageHandler{scheduler: scheduler, taskStore: taskStore}
 }
 
-// CreateTask POST /v1/videos — 创建任务
-func (h *VideoHandler) CreateTask(c *gin.Context) {
-	var req model.VideoSubmitRequest
+// CreateImageTask POST /v1/images — 创建图片任务
+func (h *ImageHandler) CreateImageTask(c *gin.Context) {
+	var req model.ImageSubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": &model.TaskErrorInfo{Message: fmt.Sprintf("请求参数错误: %v", err)},
@@ -36,16 +35,15 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	// 解析模型名称
-	params, err := model.ParseModelName(req.Model)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": &model.TaskErrorInfo{Message: err.Error()},
-		})
-		return
+	// 默认宽高
+	if req.Width <= 0 {
+		req.Width = 1792
+	}
+	if req.Height <= 0 {
+		req.Height = 1024
 	}
 
-	// 从上下文获取 API Key 绑定的分组 ID（由中间件设置）
+	// 从上下文获取 API Key 绑定的分组 ID
 	var groupID *int64
 	if gid, exists := c.Get("api_key_group_id"); exists {
 		id := gid.(int64)
@@ -72,21 +70,14 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// 生成 Sentinel Token（PoW）
+	// 生成 Sentinel Token
 	sentinel, err := client.GenerateSentinelToken(ctx, account.AccessToken)
 	if err != nil {
 		h.handleSubmitError(c, account, err)
 		return
 	}
 
-	// 提取风格（优先使用请求中的 style 字段，其次从 prompt 中提取 {style} 标记）
-	prompt := req.Prompt
-	styleID := req.Style
-	if styleID == "" {
-		prompt, styleID = sora.ExtractStyle(req.Prompt)
-	}
-
-	// 处理图片引用（图生视频），支持 URL 和 base64 data URI
+	// 处理图片引用（图生图），支持 URL 和 base64 data URI
 	var mediaID string
 	if req.InputReference != "" {
 		var imgData []byte
@@ -118,36 +109,11 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		}
 	}
 
-	var soraTaskID string
-
-	// Remix 模式：基于已有视频重新创建
-	if req.RemixTarget != "" {
-		remixTargetID := sora.ExtractRemixID(req.RemixTarget)
-		if remixTargetID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": &model.TaskErrorInfo{Message: "无效的 remix_target，需要 Sora 分享链接或 s_xxx 格式 ID"},
-			})
-			return
-		}
-		soraTaskID, err = client.RemixVideo(
-			ctx, account.AccessToken, sentinel,
-			remixTargetID, prompt, params.Orientation, params.NFrames, styleID,
-		)
-	} else if sora.IsStoryboardPrompt(prompt) {
-		// 分镜模式：自动检测 [Ns] 格式的 prompt
-		soraTaskID, err = client.CreateStoryboardTask(
-			ctx, account.AccessToken, sentinel,
-			prompt, params.Orientation, params.NFrames, mediaID, styleID,
-		)
-	} else {
-		// 普通/图生视频模式
-		soraTaskID, err = client.CreateVideoTaskWithOptions(
-			ctx, account.AccessToken, sentinel,
-			prompt, params.Orientation, params.NFrames,
-			params.Model, params.Size, mediaID, styleID,
-		)
-	}
-
+	// 提交图片任务
+	soraTaskID, err := client.CreateImageTaskWithImage(
+		ctx, account.AccessToken, sentinel,
+		req.Prompt, req.Width, req.Height, mediaID,
+	)
 	if err != nil {
 		h.handleSubmitError(c, account, err)
 		return
@@ -159,8 +125,8 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		ID:         taskID,
 		SoraTaskID: soraTaskID,
 		AccountID:  account.ID,
-		Type:       "video",
-		Model:      req.Model,
+		Type:       "image",
+		Model:      "sora-image",
 		Prompt:     req.Prompt,
 		Status:     model.TaskStatusQueued,
 	}
@@ -172,26 +138,25 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	// 启动后台轮询
+	// 启动后台轮询（TaskStore 根据 Type="image" 自动走 pollImageTask）
 	h.taskStore.StartPolling(task, account)
 
-	log.Printf("[handler] 任务已创建: %s → Sora: %s（账号: %d, 模型: %s）",
-		taskID, soraTaskID, account.ID, req.Model)
+	log.Printf("[handler] 图片任务已创建: %s → Sora: %s（账号: %d）",
+		taskID, soraTaskID, account.ID)
 
-	// 返回响应
-	c.JSON(http.StatusOK, model.VideoTaskResponse{
+	c.JSON(http.StatusOK, model.ImageTaskResponse{
 		ID:        taskID,
-		Object:    "video",
-		Model:     req.Model,
+		Object:    "image",
 		Status:    model.TaskStatusQueued,
 		Progress:  0,
 		CreatedAt: time.Now().Unix(),
-		Size:      model.SizeToResolution(params.Size, params.Orientation),
+		Width:     req.Width,
+		Height:    req.Height,
 	})
 }
 
-// GetTaskStatus GET /v1/videos/:id — 查询任务状态
-func (h *VideoHandler) GetTaskStatus(c *gin.Context) {
+// GetImageTaskStatus GET /v1/images/:id — 查询图片任务状态
+func (h *ImageHandler) GetImageTaskStatus(c *gin.Context) {
 	taskID := c.Param("id")
 
 	task, err := h.taskStore.Get(taskID)
@@ -202,18 +167,13 @@ func (h *VideoHandler) GetTaskStatus(c *gin.Context) {
 		return
 	}
 
-	resp := model.VideoTaskResponse{
+	resp := model.ImageTaskResponse{
 		ID:        task.ID,
-		Object:    task.Type,
-		Model:     task.Model,
+		Object:    "image",
 		Status:    task.Status,
 		Progress:  task.Progress,
 		CreatedAt: task.CreatedAt.Unix(),
-	}
-
-	// 解析模型获取分辨率
-	if params, err := model.ParseModelName(task.Model); err == nil {
-		resp.Size = model.SizeToResolution(params.Size, params.Orientation)
+		ImageURL:  task.ImageURL,
 	}
 
 	if task.Status == model.TaskStatusFailed && task.ErrorMessage != "" {
@@ -223,8 +183,8 @@ func (h *VideoHandler) GetTaskStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// DownloadVideo GET /v1/videos/:id/content — 下载视频
-func (h *VideoHandler) DownloadVideo(c *gin.Context) {
+// DownloadImage GET /v1/images/:id/content — 下载图片
+func (h *ImageHandler) DownloadImage(c *gin.Context) {
 	taskID := c.Param("id")
 
 	task, err := h.taskStore.Get(taskID)
@@ -242,7 +202,14 @@ func (h *VideoHandler) DownloadVideo(c *gin.Context) {
 		return
 	}
 
-	body, contentLength, contentType, err := h.taskStore.DownloadVideo(c.Request.Context(), task)
+	if task.ImageURL == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": &model.TaskErrorInfo{Message: "图片 URL 为空"},
+		})
+		return
+	}
+
+	body, contentLength, contentType, err := h.taskStore.DownloadImage(c.Request.Context(), task)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": &model.TaskErrorInfo{Message: err.Error()},
@@ -257,7 +224,6 @@ func (h *VideoHandler) DownloadVideo(c *gin.Context) {
 	}
 	c.Status(http.StatusOK)
 
-	// 流式转发
 	c.Stream(func(w io.Writer) bool {
 		buf := make([]byte, 32*1024)
 		_, err := io.CopyBuffer(w, body, buf)
@@ -266,7 +232,7 @@ func (h *VideoHandler) DownloadVideo(c *gin.Context) {
 }
 
 // handleSubmitError 处理提交任务时的错误
-func (h *VideoHandler) handleSubmitError(c *gin.Context, account *model.SoraAccount, err error) {
+func (h *ImageHandler) handleSubmitError(c *gin.Context, account *model.SoraAccount, err error) {
 	errMsg := err.Error()
 	if contains401(errMsg) {
 		h.scheduler.MarkAccountError(account.ID, model.AccountStatusTokenExpired, errMsg)
@@ -276,14 +242,4 @@ func (h *VideoHandler) handleSubmitError(c *gin.Context, account *model.SoraAcco
 	c.JSON(http.StatusInternalServerError, gin.H{
 		"error": &model.TaskErrorInfo{Message: fmt.Sprintf("提交 Sora 任务失败: %v", err)},
 	})
-}
-
-// ---- 公共错误判断函数 ----
-
-func contains401(msg string) bool {
-	return strings.Contains(msg, "401") || strings.Contains(msg, "Unauthorized")
-}
-
-func containsRateLimit(msg string) bool {
-	return strings.Contains(msg, "429") || strings.Contains(msg, "rate limit")
 }

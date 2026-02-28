@@ -13,7 +13,9 @@ type VideoSubmitRequest struct {
 	Model          string `json:"model" binding:"required"`
 	Prompt         string `json:"prompt" binding:"required"`
 	Duration       int    `json:"duration"`
-	InputReference string `json:"input_reference,omitempty"` // 图生视频参考图
+	InputReference string `json:"input_reference,omitempty"` // 图生视频参考图（URL 或 base64 data URI）
+	Style          string `json:"style,omitempty"`           // 视频风格（如 anime, retro 等）
+	RemixTarget    string `json:"remix_target,omitempty"`    // Remix 目标视频 ID 或分享链接
 }
 
 // VideoTaskResponse 任务响应（兼容 K8Ray Creator 的 SoraTaskResponse）
@@ -31,6 +33,89 @@ type VideoTaskResponse struct {
 // TaskErrorInfo 任务错误信息
 type TaskErrorInfo struct {
 	Message string `json:"message"`
+}
+
+// ---- 图片任务 ----
+
+// ImageSubmitRequest 创建图片任务请求
+type ImageSubmitRequest struct {
+	Prompt         string `json:"prompt" binding:"required"`
+	Width          int    `json:"width"`                       // 默认 1792
+	Height         int    `json:"height"`                      // 默认 1024
+	InputReference string `json:"input_reference,omitempty"`   // 图生图参考图（URL 或 base64 data URI）
+}
+
+// ImageTaskResponse 图片任务响应
+type ImageTaskResponse struct {
+	ID        string         `json:"id"`
+	Object    string         `json:"object"`             // "image"
+	Status    string         `json:"status"`
+	Progress  int            `json:"progress"`
+	CreatedAt int64          `json:"created_at"`
+	Width     int            `json:"width,omitempty"`
+	Height    int            `json:"height,omitempty"`
+	ImageURL  string         `json:"image_url,omitempty"`
+	Error     *TaskErrorInfo `json:"error,omitempty"`
+}
+
+// ---- 角色管理 ----
+
+// CharacterCreateRequest 创建角色请求
+type CharacterCreateRequest struct {
+	VideoURL    string `json:"video_url" binding:"required"` // 角色视频（URL 或 base64 data URI）
+	Username    string `json:"username,omitempty"`            // 可选，不传则使用推荐值
+	DisplayName string `json:"display_name,omitempty"`       // 可选，不传则使用推荐值
+}
+
+// CharacterResponse 角色响应
+type CharacterResponse struct {
+	ID          string         `json:"id"`
+	Status      string         `json:"status"`
+	DisplayName string         `json:"display_name,omitempty"`
+	Username    string         `json:"username,omitempty"`
+	ProfileURL  string         `json:"profile_url,omitempty"`
+	CharacterID string         `json:"character_id,omitempty"` // 定稿后可用于视频生成
+	CreatedAt   int64          `json:"created_at"`
+	Error       *TaskErrorInfo `json:"error,omitempty"`
+}
+
+// ---- 提示词增强 ----
+
+// EnhancePromptRequest 提示词增强请求
+type EnhancePromptRequest struct {
+	Prompt         string `json:"prompt" binding:"required"`
+	ExpansionLevel string `json:"expansion_level,omitempty"` // "medium" 或 "long"，默认 "medium"
+	Duration       int    `json:"duration,omitempty"`        // 5/10/15/25 秒，默认 10
+}
+
+// EnhancePromptResponse 提示词增强响应
+type EnhancePromptResponse struct {
+	OriginalPrompt string `json:"original_prompt"`
+	EnhancedPrompt string `json:"enhanced_prompt"`
+}
+
+// ---- 帖子管理 ----
+
+// PostCreateRequest 发布帖子请求
+type PostCreateRequest struct {
+	TaskID string `json:"task_id" binding:"required"` // 内部视频任务 ID
+}
+
+// PostResponse 帖子响应
+type PostResponse struct {
+	PostID string `json:"post_id"`
+}
+
+// ---- 无水印下载 ----
+
+// WatermarkFreeRequest 无水印下载请求
+type WatermarkFreeRequest struct {
+	VideoID string `json:"video_id" binding:"required"` // Sora 分享链接或视频 ID
+}
+
+// WatermarkFreeResponse 无水印下载响应
+type WatermarkFreeResponse struct {
+	URL string `json:"url"`
 }
 
 // ---- 管理端点请求/响应 ----

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateSettings } from '../api/settings'
+import { getSettings, updateSettings, testProxy, type ProxyTestResult } from '../api/settings'
 import GlassCard from '../components/ui/GlassCard'
 import LoadingState from '../components/ui/LoadingState'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -27,6 +27,8 @@ export default function Settings() {
   const [subscriptionSyncInterval, setSubscriptionSyncInterval] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<ProxyTestResult | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
@@ -72,6 +74,18 @@ export default function Settings() {
     setSaving(false)
   }
 
+  const handleTestProxy = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await testProxy(proxyUrl)
+      setTestResult(res.data)
+    } catch {
+      setTestResult({ success: false, error: '请求失败，请检查网络' })
+    }
+    setTesting(false)
+  }
+
   if (loading) return <LoadingState />
 
   return (
@@ -115,13 +129,52 @@ export default function Settings() {
             <input
               type="text"
               value={proxyUrl}
-              onChange={(e) => setProxyUrl(e.target.value)}
-              placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
+              onChange={(e) => { setProxyUrl(e.target.value); setTestResult(null) }}
+              placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080 或 ip:port:user:pass"
               className="w-full px-3.5 py-2.5 text-sm outline-none transition-all"
               style={inputStyle}
               onFocus={inputFocus}
               onBlur={inputBlur}
             />
+            <div className="flex items-center gap-3 mt-3">
+              <button
+                onClick={handleTestProxy}
+                disabled={testing}
+                className="px-4 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer"
+                style={{
+                  background: 'var(--bg-inset)',
+                  border: '1px solid var(--border-default)',
+                  color: 'var(--text-secondary)',
+                }}
+                onMouseEnter={(e) => { if (!testing) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)' } }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+              >
+                {testing ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <svg className="w-3 h-3" style={{ animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    测试中...
+                  </span>
+                ) : '测试连通性'}
+              </button>
+              <AnimatePresence>
+                {testResult && (
+                  <motion.span
+                    className="text-xs font-medium"
+                    style={{ color: testResult.success ? 'var(--success)' : 'var(--danger)' }}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    {testResult.success
+                      ? `连接成功 (${testResult.latency}ms)`
+                      : testResult.error || '连接失败'}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </GlassCard>
 

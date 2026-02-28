@@ -120,6 +120,17 @@ func (h *AdminHandler) UpdateAPIKey(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// RevealAPIKey GET /admin/api-keys/:id/reveal — 获取完整 Key
+func (h *AdminHandler) RevealAPIKey(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var apiKey model.SoraAPIKey
+	if err := h.db.First(&apiKey, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "API Key 不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"key": apiKey.Key})
+}
+
 // DeleteAPIKey DELETE /admin/api-keys/:id
 func (h *AdminHandler) DeleteAPIKey(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)

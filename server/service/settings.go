@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/DouDOU-start/go-sora2api/server/model"
+	"github.com/DouDOU-start/go-sora2api/sora"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -75,9 +76,9 @@ func (s *SettingsStore) GetAll() map[string]string {
 	return result
 }
 
-// GetProxyURL 获取全局代理 URL
+// GetProxyURL 获取全局代理 URL（自动解析 ip:port:user:pass 等格式）
 func (s *SettingsStore) GetProxyURL() string {
-	return s.Get(model.SettingProxyURL)
+	return sora.ParseProxy(s.Get(model.SettingProxyURL))
 }
 
 // GetSyncConfig 获取同步配置

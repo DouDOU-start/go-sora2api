@@ -78,6 +78,31 @@ const (
 	TaskStatusFailed     = "failed"
 )
 
+// SoraCharacter 角色记录
+type SoraCharacter struct {
+	ID           string     `json:"id" gorm:"primaryKey;size:64"`                              // 内部 ID: char_xxxxxxxx
+	AccountID    int64      `json:"account_id" gorm:"not null;index"`
+	CameoID      string     `json:"cameo_id" gorm:"size:128;index"`                            // Sora cameo ID
+	CharacterID  string     `json:"character_id" gorm:"size:128;index"`                        // 定稿后的 character ID
+	Status       string     `json:"status" gorm:"size:32;not null;default:processing"`         // processing/ready/failed
+	DisplayName  string     `json:"display_name" gorm:"size:128"`
+	Username     string     `json:"username" gorm:"size:128"`
+	ProfileURL   string     `json:"profile_url" gorm:"size:1024"`
+	ErrorMessage string     `json:"error_message,omitempty" gorm:"type:text"`
+	CreatedAt    time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt    time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+}
+
+func (SoraCharacter) TableName() string { return "sora_characters" }
+
+// 角色状态
+const (
+	CharacterStatusProcessing = "processing"
+	CharacterStatusReady      = "ready"
+	CharacterStatusFailed     = "failed"
+)
+
 // SoraAPIKey API 密钥（独立管理，可绑定分组）
 type SoraAPIKey struct {
 	ID         int64      `json:"id" gorm:"primaryKey;autoIncrement"`

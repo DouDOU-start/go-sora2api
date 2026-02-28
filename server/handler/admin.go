@@ -1,10 +1,14 @@
 package handler
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/DouDOU-start/go-sora2api/server/model"
 	"github.com/DouDOU-start/go-sora2api/server/service"
+	"github.com/DouDOU-start/go-sora2api/sora"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -60,4 +64,37 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 
 	// 返回更新后的设置
 	h.GetSettings(c)
+}
+
+// TestProxy POST /admin/proxy-test — 测试代理连通性
+func (h *AdminHandler) TestProxy(c *gin.Context) {
+	var req struct {
+		ProxyURL string `json:"proxy_url"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误"})
+		return
+	}
+
+	proxyURL := sora.ParseProxy(req.ProxyURL)
+
+	client, err := sora.New(proxyURL)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "error": fmt.Sprintf("创建客户端失败: %v", err)})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	statusCode, err := client.TestConnectivity(ctx, "https://sora.chatgpt.com")
+	latency := time.Since(start).Milliseconds()
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "error": fmt.Sprintf("连接失败: %v", err), "latency": latency})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "status_code": statusCode, "latency": latency})
 }

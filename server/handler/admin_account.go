@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/DouDOU-start/go-sora2api/server/model"
 	"github.com/gin-gonic/gin"
@@ -92,15 +94,14 @@ func (h *AdminHandler) CreateAccountDirect(c *gin.Context) {
 		return
 	}
 
-	// 异步同步配额和订阅信息
-	go func() {
-		ctx := c.Request.Context()
-		if err := h.manager.SyncSingleAccountCredit(ctx, &account); err != nil {
-			return
-		}
-		_ = h.manager.SyncSingleAccountSubscription(ctx, &account)
-	}()
+	// 同步配额和订阅信息，确保返回给前端的数据完整
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = h.manager.SyncSingleAccountCredit(ctx, &account)
+	_ = h.manager.SyncSingleAccountSubscription(ctx, &account)
 
+	// 重新从数据库读取最新状态
+	h.db.First(&account, account.ID)
 	c.JSON(http.StatusCreated, h.buildAccountResponse(account))
 }
 

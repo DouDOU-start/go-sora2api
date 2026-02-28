@@ -79,14 +79,6 @@ func AdminAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 // APIKeyAuthMiddleware /v1/ API 认证中间件（从数据库查询 API Keys）
 func APIKeyAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 检查是否存在启用的 API Key，若无则跳过认证（开放模式）
-		var count int64
-		db.Model(&model.SoraAPIKey{}).Where("enabled = ?", true).Count(&count)
-		if count == 0 {
-			c.Next()
-			return
-		}
-
 		auth := c.GetHeader("Authorization")
 		if auth == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{

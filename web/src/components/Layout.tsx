@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { apiSections } from '../data/apiDocs'
+import { apiSections, apiGroupDefs } from '../data/apiDocs'
 
 const navItems = [
   { path: '/', label: '概览', icon: BarChartIcon },
@@ -10,14 +10,19 @@ const navItems = [
   { path: '/groups', label: '分组', icon: FolderIcon },
   { path: '/api-keys', label: '密钥', icon: KeyIcon },
   { path: '/tasks', label: '任务', icon: ListIcon },
-  { path: '/settings', label: '设置', icon: GearIcon },
   { path: '/docs', label: '文档', icon: BookIcon },
+  { path: '/settings', label: '设置', icon: GearIcon },
 ]
 
-// 文档二级导航数据
-const docSubItems = apiSections.flatMap((s) =>
-  s.endpoints.map((ep) => ({ id: ep.id, label: ep.title, method: ep.testable !== false ? ep.method : '' }))
-)
+// 文档二级导航数据 — 按分组组织
+const docSubGroups = apiGroupDefs.map((g) => ({
+  ...g,
+  items: apiSections
+    .filter((s) => s.group === g.id)
+    .flatMap((s) =>
+      s.endpoints.map((ep) => ({ id: ep.id, label: ep.title, method: ep.testable !== false ? ep.method : '' }))
+    ),
+}))
 
 export default function Layout() {
   const { logout, theme, toggleTheme } = useAuthStore()
@@ -170,8 +175,8 @@ export default function Layout() {
           </div>
         </main>
 
-        {/* 移动端底部导航 */}
-        <nav
+        {/* 移动端底部导航 — 文档页隐藏 */}
+        {location.pathname !== '/docs' && <nav
           className="lg:hidden flex items-center justify-around h-14 flex-shrink-0 border-t"
           style={{
             background: 'var(--bg-surface)',
@@ -198,7 +203,7 @@ export default function Layout() {
               )}
             </NavLink>
           ))}
-        </nav>
+        </nav>}
       </div>
 
       {/* ── 移动端侧边栏抽屉 ── */}
@@ -309,28 +314,38 @@ function DocSubNav() {
 
   return (
     <motion.div
-      className="ml-5 pl-3 mt-1 mb-1 space-y-0.5"
+      className="ml-5 pl-3 mt-1 mb-1 space-y-1"
       style={{ borderLeft: '1px solid var(--bg-sidebar-hover)' }}
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       transition={{ duration: 0.2 }}
     >
-      {docSubItems.map((sub) => (
-        <button
-          key={sub.id}
-          onClick={() => handleClick(sub.id)}
-          className="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-[12px] transition-all duration-150 cursor-pointer"
-          style={{
-            background: activeId === sub.id ? 'var(--bg-sidebar-active)' : 'transparent',
-            color: activeId === sub.id ? 'var(--text-sidebar-active)' : 'var(--text-sidebar)',
-            fontWeight: activeId === sub.id ? 500 : 400,
-          }}
-          onMouseEnter={(e) => { if (activeId !== sub.id) e.currentTarget.style.background = 'var(--bg-sidebar-hover)' }}
-          onMouseLeave={(e) => { if (activeId !== sub.id) e.currentTarget.style.background = 'transparent' }}
-        >
-          {sub.method && <MethodDot method={sub.method} />}
-          <span className="truncate">{sub.label}</span>
-        </button>
+      {docSubGroups.map((group) => (
+        <div key={group.id}>
+          <div
+            className="text-[10px] font-bold uppercase tracking-wider px-2 pt-2 pb-1"
+            style={{ color: 'var(--text-sidebar)', opacity: 0.5 }}
+          >
+            {group.title}
+          </div>
+          {group.items.map((sub) => (
+            <button
+              key={sub.id}
+              onClick={() => handleClick(sub.id)}
+              className="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-[12px] transition-all duration-150 cursor-pointer"
+              style={{
+                background: activeId === sub.id ? 'var(--bg-sidebar-active)' : 'transparent',
+                color: activeId === sub.id ? 'var(--text-sidebar-active)' : 'var(--text-sidebar)',
+                fontWeight: activeId === sub.id ? 500 : 400,
+              }}
+              onMouseEnter={(e) => { if (activeId !== sub.id) e.currentTarget.style.background = 'var(--bg-sidebar-hover)' }}
+              onMouseLeave={(e) => { if (activeId !== sub.id) e.currentTarget.style.background = 'transparent' }}
+            >
+              {sub.method && <MethodDot method={sub.method} />}
+              <span className="truncate">{sub.label}</span>
+            </button>
+          ))}
+        </div>
       ))}
     </motion.div>
   )

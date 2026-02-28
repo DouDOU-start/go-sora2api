@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { listAPIKeys, createAPIKey, updateAPIKey, deleteAPIKey } from '../api/apikey'
+import { listAPIKeys, createAPIKey, updateAPIKey, deleteAPIKey, revealAPIKey } from '../api/apikey'
 import { listGroups, type GroupWithCount } from '../api/group'
 import GlassCard from '../components/ui/GlassCard'
 import LoadingState from '../components/ui/LoadingState'
@@ -38,6 +38,7 @@ export default function APIKeyList() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [confirmState, setConfirmState] = useState<{ open: boolean; id: number }>({ open: false, id: 0 })
   const [newKeyVisible, setNewKeyVisible] = useState<{ id: number; key: string } | null>(null)
+  const [revealedKeys, setRevealedKeys] = useState<Record<number, string>>({})
 
   const reload = useCallback(() => setRefreshKey((k) => k + 1), [])
 
@@ -103,6 +104,23 @@ export default function APIKeyList() {
     } catch (err) {
       toast.error(getErrorMessage(err, '删除失败'))
     }
+  }
+
+  const handleReveal = async (id: number) => {
+    try {
+      const res = await revealAPIKey(id)
+      setRevealedKeys((prev) => ({ ...prev, [id]: res.data.key }))
+    } catch {
+      toast.error('获取密钥失败')
+    }
+  }
+
+  const handleHide = (id: number) => {
+    setRevealedKeys((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
   }
 
   const copyKey = (key: string) => {
@@ -178,9 +196,49 @@ export default function APIKeyList() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    <code className="font-mono" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {k.key_hint}
-                    </code>
+                    <span className="inline-flex items-center gap-1.5">
+                      <code className="font-mono" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        {revealedKeys[k.id] || k.key_hint}
+                      </code>
+                      {revealedKeys[k.id] ? (
+                        <>
+                          <button
+                            onClick={() => copyKey(revealedKeys[k.id])}
+                            className="p-0.5 rounded transition-colors cursor-pointer"
+                            style={{ color: 'var(--accent)' }}
+                            title="复制"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleHide(k.id)}
+                            className="p-0.5 rounded transition-colors cursor-pointer"
+                            style={{ color: 'var(--text-tertiary)' }}
+                            title="隐藏"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                              <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                              <line x1="1" y1="1" x2="23" y2="23" />
+                            </svg>
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleReveal(k.id)}
+                          className="p-0.5 rounded transition-colors cursor-pointer"
+                          style={{ color: 'var(--text-tertiary)' }}
+                          title="显示完整密钥"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        </button>
+                      )}
+                    </span>
                     {k.group_name && (
                       <span className="inline-flex items-center gap-1">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

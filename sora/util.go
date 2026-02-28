@@ -2,11 +2,14 @@ package sora
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/url"
 	"path"
 	"strings"
+
+	http "github.com/bogdanfinn/fhttp"
 )
 
 // ParseProxy 解析代理字符串
@@ -55,6 +58,78 @@ func readAll(r io.Reader) ([]byte, error) {
 // DownloadFile 下载 URL 内容并返回字节数据
 func (c *Client) DownloadFile(ctx context.Context, fileURL string) ([]byte, error) {
 	return c.doGet(ctx, fileURL, nil)
+}
+
+// TestConnectivity 测试代理连通性，向目标 URL 发送 GET 请求，只要收到响应即视为成功
+func (c *Client) TestConnectivity(ctx context.Context, targetURL string) (statusCode int, err error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("User-Agent", desktopUserAgents[c.randIntn(len(desktopUserAgents))])
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode, nil
+}
+
+// IsDataURI 判断字符串是否为 data URI（data:...;base64,...）
+func IsDataURI(s string) bool {
+	return strings.HasPrefix(s, "data:")
+}
+
+// ParseDataURI 解析 data URI，返回二进制数据和对应的文件扩展名
+// 支持格式: data:image/png;base64,iVBOR... 或 data:video/mp4;base64,AAAA...
+func ParseDataURI(dataURI string) (data []byte, ext string, err error) {
+	// 格式: data:[<mediatype>][;base64],<data>
+	if !strings.HasPrefix(dataURI, "data:") {
+		return nil, "", fmt.Errorf("不是有效的 data URI")
+	}
+
+	commaIdx := strings.Index(dataURI, ",")
+	if commaIdx < 0 {
+		return nil, "", fmt.Errorf("data URI 格式错误: 缺少逗号分隔符")
+	}
+
+	meta := dataURI[5:commaIdx] // 跳过 "data:"
+	payload := dataURI[commaIdx+1:]
+
+	if !strings.Contains(meta, "base64") {
+		return nil, "", fmt.Errorf("仅支持 base64 编码的 data URI")
+	}
+
+	data, err = base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return nil, "", fmt.Errorf("base64 解码失败: %w", err)
+	}
+
+	// 从 MIME 类型推断扩展名
+	mimeType := strings.Split(meta, ";")[0] // e.g. "image/png"
+	switch mimeType {
+	case "image/png":
+		ext = ".png"
+	case "image/jpeg", "image/jpg":
+		ext = ".jpg"
+	case "image/webp":
+		ext = ".webp"
+	case "video/mp4":
+		ext = ".mp4"
+	case "video/webm":
+		ext = ".webm"
+	default:
+		// 尝试从 MIME 中提取子类型作为扩展名
+		parts := strings.SplitN(mimeType, "/", 2)
+		if len(parts) == 2 && parts[1] != "" {
+			ext = "." + parts[1]
+		} else {
+			ext = ".bin"
+		}
+	}
+
+	return data, ext, nil
 }
 
 // ExtFromURL 从 URL 中提取文件扩展名，默认返回 fallback

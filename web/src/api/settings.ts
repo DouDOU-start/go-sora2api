@@ -11,3 +11,13 @@ export const getSettings = () => client.get<SystemSettings>('/admin/settings')
 
 export const updateSettings = (data: Partial<Record<string, string>>) =>
   client.put<SystemSettings>('/admin/settings', data)
+
+export interface ProxyTestResult {
+  success: boolean
+  status_code?: number
+  latency?: number
+  error?: string
+}
+
+export const testProxy = (proxyUrl: string) =>
+  client.post<ProxyTestResult>('/admin/proxy-test', { proxy_url: proxyUrl })

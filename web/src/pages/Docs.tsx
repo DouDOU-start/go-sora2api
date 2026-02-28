@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import axios, { type AxiosRequestConfig } from 'axios'
-import { apiSections } from '../data/apiDocs'
+import { apiSections, apiGroupDefs } from '../data/apiDocs'
 import type { ApiEndpoint } from '../data/apiDocs'
 import GlassCard from '../components/ui/GlassCard'
 
@@ -83,36 +83,54 @@ export default function Docs() {
         </div>
       </GlassCard>
 
-      {/* 文档内容 */}
-      {apiSections.map((section, si) => (
-        <div key={section.id} className="mb-10">
-          <motion.div
-            className="flex items-center gap-3 mb-4"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: si * 0.05 }}
-          >
-            <span
-              className="text-[11px] font-bold px-2 py-0.5 rounded-md font-mono flex-shrink-0"
-              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+      {/* 文档内容 — 按分组渲染 */}
+      {apiGroupDefs.map((group) => {
+        const groupSections = apiSections.filter((s) => s.group === group.id)
+        if (groupSections.length === 0) return null
+        return (
+          <div key={group.id} className="mb-12">
+            {/* 分组标题 */}
+            <motion.div
+              className="flex items-center gap-2 mb-6"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
             >
-              {String(si + 1).padStart(2, '0')}
-            </span>
-            <div>
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{section.title}</h2>
-              {section.description && (
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{section.description}</p>
-              )}
-            </div>
-          </motion.div>
+              <div
+                className="h-5 w-1 rounded-full"
+                style={{ background: 'var(--accent)' }}
+              />
+              <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+                {group.title}
+              </h2>
+              <div className="flex-1 h-px" style={{ background: 'var(--border-subtle)' }} />
+            </motion.div>
 
-          <div className="space-y-4">
-            {section.endpoints.map((ep, i) => (
-              <EndpointCard key={ep.id} endpoint={ep} delay={i} apiKey={apiKey} />
+            {/* 分组内的 section */}
+            {groupSections.map((section) => (
+              <div key={section.id} className="mb-10">
+                <motion.div
+                  className="flex items-center gap-3 mb-4"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <div>
+                    <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{section.title}</h3>
+                    {section.description && (
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{section.description}</p>
+                    )}
+                  </div>
+                </motion.div>
+
+                <div className="space-y-4">
+                  {section.endpoints.map((ep, i) => (
+                    <EndpointCard key={ep.id} endpoint={ep} delay={i} apiKey={apiKey} />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

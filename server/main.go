@@ -45,7 +45,7 @@ func main() {
 	}
 
 	// 自动迁移
-	if err := db.AutoMigrate(&model.SoraAccountGroup{}, &model.SoraAccount{}, &model.SoraTask{}, &model.SoraSetting{}, &model.SoraAPIKey{}); err != nil {
+	if err := db.AutoMigrate(&model.SoraAccountGroup{}, &model.SoraAccount{}, &model.SoraTask{}, &model.SoraSetting{}, &model.SoraAPIKey{}, &model.SoraCharacter{}); err != nil {
 		log.Fatalf("[main] 数据库迁移失败: %v", err)
 	}
 

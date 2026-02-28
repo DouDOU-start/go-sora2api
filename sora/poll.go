@@ -24,6 +24,7 @@ type taskResponseItem struct {
 }
 
 type generationItem struct {
+	ID  string `json:"id"` // generation ID（如 gen_xxx），用于发布帖子
 	URL string `json:"url"`
 }
 
@@ -40,6 +41,7 @@ type draftsResp struct {
 
 type draftItem struct {
 	TaskID          string `json:"task_id"`
+	GenerationID    string `json:"generation_id"` // gen_xxx，用于发布帖子
 	Kind            string `json:"kind"`
 	ReasonStr       string `json:"reason_str"`
 	MarkdownReason  string `json:"markdown_reason_str"`
@@ -297,6 +299,51 @@ func (c *Client) GetDownloadURL(ctx context.Context, accessToken, taskID string)
 	}
 
 	return "", fmt.Errorf("在最近草稿中未找到任务 %s", taskID)
+}
+
+// GetGenerationID 从 recent_tasks 或 drafts 接口获取任务的 generation ID
+// 用于发布帖子时传入 PublishVideo
+func (c *Client) GetGenerationID(ctx context.Context, accessToken, taskID string) (string, error) {
+	headers := c.baseHeaders(accessToken)
+
+	// 先从 recent_tasks 获取
+	body, err := c.doGet(ctx, soraBaseURL+"/v2/recent_tasks?limit=20", headers)
+	if err == nil {
+		var result recentTasksResp
+		if err := json.Unmarshal(body, &result); err == nil {
+			for i := range result.TaskResponses {
+				task := &result.TaskResponses[i]
+				if task.ID != taskID {
+					continue
+				}
+				for j := range task.Generations {
+					if task.Generations[j].ID != "" {
+						return task.Generations[j].ID, nil
+					}
+				}
+			}
+		}
+	}
+
+	// 回退到 drafts 接口
+	body, err = c.doGet(ctx, soraBaseURL+"/project_y/profile/drafts?limit=15", headers)
+	if err != nil {
+		return "", fmt.Errorf("获取 generation ID 失败: %w", err)
+	}
+
+	var drafts draftsResp
+	if err := json.Unmarshal(body, &drafts); err != nil {
+		return "", fmt.Errorf("解析 drafts 响应失败: %w", err)
+	}
+
+	for i := range drafts.Items {
+		item := &drafts.Items[i]
+		if item.TaskID == taskID && item.GenerationID != "" {
+			return item.GenerationID, nil
+		}
+	}
+
+	return "", fmt.Errorf("未找到任务 %s 的 generation ID", taskID)
 }
 
 // ImageTaskResult 图片任务单次查询结果
