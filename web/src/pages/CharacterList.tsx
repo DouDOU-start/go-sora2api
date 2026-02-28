@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { listCharacters, deleteCharacter, toggleCharacterVisibility, getCharacterImageUrl } from '../api/character'
 import type { SoraCharacter } from '../types/character'
+import { useAuthStore } from '../store/authStore'
 import GlassCard from '../components/ui/GlassCard'
 import StatusBadge from '../components/ui/StatusBadge'
 import LoadingState from '../components/ui/LoadingState'
@@ -32,6 +33,8 @@ const statusLabel: Record<string, string> = {
 }
 
 export default function CharacterList() {
+  const { role } = useAuthStore()
+  const isAdmin = role === 'admin'
   const [characters, setCharacters] = useState<SoraCharacter[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -330,7 +333,7 @@ export default function CharacterList() {
                       <DetailRow label="关联账号" value={selectedChar.account_email} />
                     )}
                     <DetailRow label="状态" value={statusLabel[selectedChar.status] || selectedChar.status} />
-                    {selectedChar.status === 'ready' && (
+                    {selectedChar.status === 'ready' && isAdmin && (
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs font-medium flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>可见性</span>
                         <button
@@ -355,6 +358,9 @@ export default function CharacterList() {
                         </button>
                       </div>
                     )}
+                    {selectedChar.status === 'ready' && !isAdmin && (
+                      <DetailRow label="可见性" value={selectedChar.is_public ? '公开' : '私密'} />
+                    )}
                     <DetailRow label="创建时间" value={new Date(selectedChar.created_at).toLocaleString('zh-CN')} />
                     {selectedChar.completed_at && (
                       <DetailRow label="完成时间" value={new Date(selectedChar.completed_at).toLocaleString('zh-CN')} />
@@ -376,13 +382,15 @@ export default function CharacterList() {
                     >
                       关闭
                     </button>
-                    <button
-                      onClick={() => { setDeleteTarget(selectedChar); }}
-                      className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors cursor-pointer"
-                      style={{ background: 'var(--danger)' }}
-                    >
-                      删除
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => { setDeleteTarget(selectedChar); }}
+                        className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors cursor-pointer"
+                        style={{ background: 'var(--danger)' }}
+                      >
+                        删除
+                      </button>
+                    )}
                   </div>
                 </div>
               </motion.div>

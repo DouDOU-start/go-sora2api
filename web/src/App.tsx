@@ -19,6 +19,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// 仅管理员可访问的路由保护
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { role } = useAuthStore()
+  if (role !== 'admin') return <Navigate to="/characters" replace />
+  return <>{children}</>
+}
+
+// viewer 的默认首页
+function DefaultRedirect() {
+  const { role } = useAuthStore()
+  if (role === 'admin') return <Dashboard />
+  return <Navigate to="/characters" replace />
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -32,14 +46,14 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/accounts" element={<AccountList />} />
-          <Route path="/groups" element={<GroupList />} />
-          <Route path="/api-keys" element={<APIKeyList />} />
+          <Route path="/" element={<DefaultRedirect />} />
+          <Route path="/accounts" element={<AdminRoute><AccountList /></AdminRoute>} />
+          <Route path="/groups" element={<AdminRoute><GroupList /></AdminRoute>} />
+          <Route path="/api-keys" element={<AdminRoute><APIKeyList /></AdminRoute>} />
           <Route path="/tasks" element={<TaskList />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/characters" element={<CharacterList />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
           <Route path="/docs" element={<Docs />} />
         </Route>
       </Routes>

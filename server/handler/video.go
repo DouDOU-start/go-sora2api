@@ -250,10 +250,15 @@ func (h *VideoHandler) resolveInputReference(ctx context.Context, c *gin.Context
 // finishTask 公共收尾逻辑：创建任务记录、启动轮询、返回响应
 func (h *VideoHandler) finishTask(c *gin.Context, soraTaskID string, account *model.SoraAccount, modelName, prompt string, params *model.ModelParams) {
 	taskID := "task_" + uuid.New().String()[:8]
+	var apiKeyID int64
+	if kid, exists := c.Get("api_key_id"); exists {
+		apiKeyID = kid.(int64)
+	}
 	task := &model.SoraTask{
 		ID:         taskID,
 		SoraTaskID: soraTaskID,
 		AccountID:  account.ID,
+		APIKeyID:   apiKeyID,
 		Type:       "video",
 		Model:      modelName,
 		Prompt:     prompt,

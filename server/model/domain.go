@@ -46,6 +46,7 @@ type SoraTask struct {
 	ID           string     `json:"id" gorm:"primaryKey;size:64"`
 	SoraTaskID   string     `json:"sora_task_id" gorm:"size:128;not null;index"`
 	AccountID    int64      `json:"account_id" gorm:"not null;index"`
+	APIKeyID     int64      `json:"api_key_id" gorm:"index;default:0"` // 创建该任务的 API Key ID（0 表示未知）
 	Type         string     `json:"type" gorm:"size:32;not null;default:video"` // video/image
 	Model        string     `json:"model" gorm:"size:128"`
 	Prompt       string     `json:"prompt" gorm:"type:text"`

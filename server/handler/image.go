@@ -121,10 +121,15 @@ func (h *ImageHandler) CreateImageTask(c *gin.Context) {
 
 	// 创建内部任务记录
 	taskID := "task_" + uuid.New().String()[:8]
+	var apiKeyID int64
+	if kid, exists := c.Get("api_key_id"); exists {
+		apiKeyID = kid.(int64)
+	}
 	task := &model.SoraTask{
 		ID:         taskID,
 		SoraTaskID: soraTaskID,
 		AccountID:  account.ID,
+		APIKeyID:   apiKeyID,
 		Type:       "image",
 		Model:      "sora-image",
 		Prompt:     req.Prompt,

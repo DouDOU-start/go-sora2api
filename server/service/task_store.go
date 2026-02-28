@@ -40,14 +40,17 @@ func (ts *TaskStore) Get(taskID string) (*model.SoraTask, error) {
 	return &task, nil
 }
 
-// ListTasks 分页查询任务
-func (ts *TaskStore) ListTasks(status string, page, pageSize int) ([]model.SoraTask, int64, error) {
+// ListTasks 分页查询任务（apiKeyID > 0 时按 API Key 过滤）
+func (ts *TaskStore) ListTasks(status string, page, pageSize int, apiKeyID int64) ([]model.SoraTask, int64, error) {
 	var tasks []model.SoraTask
 	var total int64
 
 	query := ts.db.Model(&model.SoraTask{})
 	if status != "" {
 		query = query.Where("status = ?", status)
+	}
+	if apiKeyID > 0 {
+		query = query.Where("api_key_id = ?", apiKeyID)
 	}
 
 	if err := query.Count(&total).Error; err != nil {

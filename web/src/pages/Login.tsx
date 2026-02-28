@@ -4,9 +4,13 @@ import { useAuthStore } from '../store/authStore'
 import client from '../api/client'
 import { motion } from 'framer-motion'
 
+type LoginMode = 'admin' | 'apikey'
+
 export default function Login() {
+  const [mode, setMode] = useState<LoginMode>('admin')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [apiKey, setApiKey] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { setToken, theme, toggleTheme } = useAuthStore()
@@ -14,26 +18,47 @@ export default function Login() {
 
   // 焦点管理
   useEffect(() => {
-    const input = document.getElementById('login-username') as HTMLInputElement
-    input?.focus()
-  }, [])
+    if (mode === 'admin') {
+      const input = document.getElementById('login-username') as HTMLInputElement
+      input?.focus()
+    } else {
+      const input = document.getElementById('login-apikey') as HTMLInputElement
+      input?.focus()
+    }
+  }, [mode])
+
+  // 切换模式时清空错误
+  useEffect(() => {
+    setError('')
+  }, [mode])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!username.trim() || !password.trim()) return
+
+    if (mode === 'admin' && (!username.trim() || !password.trim())) return
+    if (mode === 'apikey' && !apiKey.trim()) return
 
     setLoading(true)
     setError('')
 
     try {
-      const res = await client.post('/admin/login', { username, password })
-      setToken(res.data.token)
+      if (mode === 'admin') {
+        const res = await client.post('/admin/login', { username, password })
+        setToken(res.data.token, res.data.role || 'admin')
+      } else {
+        const res = await client.post('/admin/login/apikey', { api_key: apiKey })
+        setToken(res.data.token, res.data.role || 'viewer')
+      }
       navigate('/')
     } catch {
-      setError('用户名或密码错误')
+      setError(mode === 'admin' ? '用户名或密码错误' : 'API Key 无效或已禁用')
     }
     setLoading(false)
   }
+
+  const canSubmit = mode === 'admin'
+    ? username.trim() && password.trim()
+    : apiKey.trim()
 
   return (
     <div
@@ -112,59 +137,111 @@ export default function Login() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.5 }}
         >
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="login-username"
-                className="block text-[13px] font-medium mb-2"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                用户名
-              </label>
-              <input
-                id="login-username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
-                autoComplete="username"
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all duration-200"
+          {/* 登录方式切换 */}
+          <div
+            className="flex rounded-xl p-1 mb-5"
+            style={{ background: 'var(--bg-inset)' }}
+          >
+            {[
+              { key: 'admin' as LoginMode, label: '管理员登录' },
+              { key: 'apikey' as LoginMode, label: 'API Key 登录' },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setMode(tab.key)}
+                className="flex-1 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 cursor-pointer"
                 style={{
-                  background: 'var(--bg-inset)',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--text-primary)',
+                  background: mode === tab.key ? 'var(--bg-surface)' : 'transparent',
+                  color: mode === tab.key ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  boxShadow: mode === tab.key ? 'var(--shadow-sm)' : 'none',
                 }}
-                onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)' }}
-                onBlur={(e) => { e.target.style.borderColor = 'var(--border-default)'; e.target.style.boxShadow = 'none' }}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="login-password"
-                className="block text-[13px] font-medium mb-2"
-                style={{ color: 'var(--text-secondary)' }}
               >
-                密码
-              </label>
-              <input
-                id="login-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="******"
-                autoComplete="current-password"
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all duration-200"
-                style={{
-                  background: 'var(--bg-inset)',
-                  border: '1px solid var(--border-default)',
-                  color: 'var(--text-primary)',
-                }}
-                onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)' }}
-                onBlur={(e) => { e.target.style.borderColor = 'var(--border-default)'; e.target.style.boxShadow = 'none' }}
-              />
-            </div>
+                {tab.label}
+              </button>
+            ))}
           </div>
+
+          {mode === 'admin' ? (
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="login-username"
+                  className="block text-[13px] font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  用户名
+                </label>
+                <input
+                  id="login-username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="admin"
+                  autoComplete="username"
+                  className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all duration-200"
+                  style={{
+                    background: 'var(--bg-inset)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)',
+                  }}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)' }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border-default)'; e.target.style.boxShadow = 'none' }}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="login-password"
+                  className="block text-[13px] font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  密码
+                </label>
+                <input
+                  id="login-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="******"
+                  autoComplete="current-password"
+                  className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all duration-200"
+                  style={{
+                    background: 'var(--bg-inset)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)',
+                  }}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)' }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border-default)'; e.target.style.boxShadow = 'none' }}
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label
+                htmlFor="login-apikey"
+                className="block text-[13px] font-medium mb-2"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                API Key
+              </label>
+              <input
+                id="login-apikey"
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="sk-..."
+                autoComplete="off"
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all duration-200 font-mono"
+                style={{
+                  background: 'var(--bg-inset)',
+                  border: '1px solid var(--border-default)',
+                  color: 'var(--text-primary)',
+                }}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)' }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border-default)'; e.target.style.boxShadow = 'none' }}
+              />
+            </div>
+          )}
 
           {/* 错误信息 */}
           {error && (
@@ -180,7 +257,7 @@ export default function Login() {
 
           <button
             type="submit"
-            disabled={loading || !username.trim() || !password.trim()}
+            disabled={loading || !canSubmit}
             className="w-full mt-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: 'var(--accent)',

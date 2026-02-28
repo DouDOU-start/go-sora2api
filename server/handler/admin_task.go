@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ListTasks GET /admin/tasks
+// ListTasks GET /admin/tasks（viewer 角色只能看到自己 API Key 创建的任务）
 func (h *AdminHandler) ListTasks(c *gin.Context) {
 	status := c.Query("status")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -25,7 +25,15 @@ func (h *AdminHandler) ListTasks(c *gin.Context) {
 		pageSize = 20
 	}
 
-	tasks, total, err := h.taskStore.ListTasks(status, page, pageSize)
+	// viewer 角色按 API Key ID 过滤
+	var apiKeyID int64
+	if role, _ := c.Get("role"); role == RoleViewer {
+		if kid, exists := c.Get("jwt_api_key_id"); exists {
+			apiKeyID = kid.(int64)
+		}
+	}
+
+	tasks, total, err := h.taskStore.ListTasks(status, page, pageSize, apiKeyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -39,7 +47,7 @@ func (h *AdminHandler) ListTasks(c *gin.Context) {
 	})
 }
 
-// GetTask GET /admin/tasks/:id
+// GetTask GET /admin/tasks/:id（viewer 只能查看自己 API Key 创建的任务）
 func (h *AdminHandler) GetTask(c *gin.Context) {
 	taskID := c.Param("id")
 
@@ -51,6 +59,16 @@ func (h *AdminHandler) GetTask(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// viewer 只能查看自己的任务
+	if role, _ := c.Get("role"); role == RoleViewer {
+		if kid, exists := c.Get("jwt_api_key_id"); exists {
+			if task.APIKeyID != kid.(int64) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "任务不存在"})
+				return
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, task)
@@ -68,6 +86,16 @@ func (h *AdminHandler) DownloadTaskContent(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// viewer 只能下载自己的任务
+	if role, _ := c.Get("role"); role == RoleViewer {
+		if kid, exists := c.Get("jwt_api_key_id"); exists {
+			if task.APIKeyID != kid.(int64) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "任务不存在"})
+				return
+			}
+		}
 	}
 
 	if task.Status != model.TaskStatusCompleted {

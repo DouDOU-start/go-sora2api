@@ -1,12 +1,15 @@
 import { create } from 'zustand'
 
 type Theme = 'light' | 'dark'
+export type UserRole = 'admin' | 'viewer'
 
 interface AuthState {
   token: string | null
+  role: UserRole | null
   theme: Theme
-  setToken: (token: string) => void
+  setToken: (token: string, role?: UserRole) => void
   logout: () => void
+  isAdmin: () => boolean
   toggleTheme: () => void
   initTheme: () => void
 }
@@ -26,19 +29,25 @@ function applyTheme(theme: Theme) {
   if (meta) meta.setAttribute('content', theme === 'dark' ? '#0a0a12' : '#f4f2ef')
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   token: localStorage.getItem('token'),
+  role: (localStorage.getItem('role') as UserRole) || null,
   theme: getSavedTheme(),
 
-  setToken: (token: string) => {
+  setToken: (token: string, role?: UserRole) => {
     localStorage.setItem('token', token)
-    set({ token })
+    const r = role || 'admin'
+    localStorage.setItem('role', r)
+    set({ token, role: r })
   },
 
   logout: () => {
     localStorage.removeItem('token')
-    set({ token: null })
+    localStorage.removeItem('role')
+    set({ token: null, role: null })
   },
+
+  isAdmin: () => get().role === 'admin',
 
   toggleTheme: () => {
     set((state) => {

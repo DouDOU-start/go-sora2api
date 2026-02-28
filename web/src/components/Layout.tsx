@@ -4,15 +4,15 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { apiSections, apiGroupDefs } from '../data/apiDocs'
 
-const navItems = [
-  { path: '/', label: '概览', icon: BarChartIcon },
-  { path: '/accounts', label: '账号', icon: UserIcon },
-  { path: '/groups', label: '分组', icon: FolderIcon },
-  { path: '/api-keys', label: '密钥', icon: KeyIcon },
-  { path: '/tasks', label: '任务', icon: ListIcon },
-  { path: '/characters', label: '角色', icon: CharacterIcon },
-  { path: '/docs', label: '文档', icon: BookIcon },
-  { path: '/settings', label: '设置', icon: GearIcon },
+const allNavItems = [
+  { path: '/', label: '概览', icon: BarChartIcon, adminOnly: true },
+  { path: '/accounts', label: '账号', icon: UserIcon, adminOnly: true },
+  { path: '/groups', label: '分组', icon: FolderIcon, adminOnly: true },
+  { path: '/api-keys', label: '密钥', icon: KeyIcon, adminOnly: true },
+  { path: '/tasks', label: '任务', icon: ListIcon, adminOnly: false },
+  { path: '/characters', label: '角色', icon: CharacterIcon, adminOnly: false },
+  { path: '/docs', label: '文档', icon: BookIcon, adminOnly: false },
+  { path: '/settings', label: '设置', icon: GearIcon, adminOnly: true },
 ]
 
 // 文档二级导航数据 — 按分组组织
@@ -26,10 +26,12 @@ const docSubGroups = apiGroupDefs.map((g) => ({
 }))
 
 export default function Layout() {
-  const { logout, theme, toggleTheme } = useAuthStore()
+  const { logout, theme, toggleTheme, role } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const isAdmin = role === 'admin'
+  const navItems = allNavItems.filter((item) => isAdmin || !item.adminOnly)
 
   // 路由变化时关闭移动端菜单
   useEffect(() => {

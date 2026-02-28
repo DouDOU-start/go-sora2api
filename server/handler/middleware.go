@@ -11,16 +11,31 @@ import (
 	"gorm.io/gorm"
 )
 
+// 用户角色常量
+const (
+	RoleAdmin  = "admin"  // 管理员：拥有所有权限
+	RoleViewer = "viewer" // 只读用户（API Key 登录）：只能查看文档和角色库
+)
+
 // JWTClaims JWT 载荷
 type JWTClaims struct {
 	Username string `json:"username"`
+	Role     string `json:"role"`       // admin / viewer
+	APIKeyID int64  `json:"api_key_id"` // viewer 角色对应的 API Key ID（admin 为 0）
 	jwt.RegisteredClaims
 }
 
-// GenerateJWT 生成 JWT Token
+// GenerateJWT 生成 JWT Token（默认管理员角色）
 func GenerateJWT(secret, username string) (string, error) {
+	return GenerateJWTWithRole(secret, username, RoleAdmin, 0)
+}
+
+// GenerateJWTWithRole 生成指定角色的 JWT Token
+func GenerateJWTWithRole(secret, username, role string, apiKeyID int64) (string, error) {
 	claims := JWTClaims{
 		Username: username,
+		Role:     role,
+		APIKeyID: apiKeyID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -82,6 +97,22 @@ func AdminAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		}
 
 		c.Set("username", claims.Username)
+		c.Set("role", claims.Role)
+		c.Set("jwt_api_key_id", claims.APIKeyID)
+		c.Next()
+	}
+}
+
+// AdminOnlyMiddleware 仅管理员可访问的中间件（需放在 AdminAuthMiddleware 之后）
+func AdminOnlyMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role != RoleAdmin {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "权限不足，此操作仅限管理员",
+			})
+			return
+		}
 		c.Next()
 	}
 }
@@ -128,7 +159,8 @@ func APIKeyAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			"last_used_at": now,
 		})
 
-		// 将绑定的分组 ID 传入上下文，供调度器使用
+		// 将 API Key 信息传入上下文
+		c.Set("api_key_id", apiKey.ID)
 		c.Set("api_key_group_id", *apiKey.GroupID)
 
 		c.Next()
