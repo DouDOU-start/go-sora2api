@@ -232,8 +232,7 @@ API Key 可在管理后台的「密钥」页面创建和管理。
         description: '提交图片生成任务。支持文生图（仅 prompt）和图生图（额外传 input_reference，支持 URL 或 base64 data URI）。',
         bodyParams: [
           { name: 'prompt', type: 'string', required: true, description: '图片生成提示词' },
-          { name: 'width', type: 'integer', required: false, description: '图片宽度（默认 1792）' },
-          { name: 'height', type: 'integer', required: false, description: '图片高度（默认 1024）' },
+          { name: 'size', type: 'string', required: false, description: '图片尺寸：1792x1024（横屏，默认）、1024x1024（方形）、1024x1792（竖屏）' },
           { name: 'input_reference', type: 'string', required: false, description: '参考图片 URL 或 base64 data URI（图生图）' },
         ],
         responseExample: `{
@@ -242,8 +241,7 @@ API Key 可在管理后台的「密钥」页面创建和管理。
   "status": "queued",
   "progress": 0,
   "created_at": 1709251234,
-  "width": 1792,
-  "height": 1024
+  "size": "1792x1024"
 }`,
       },
       {
@@ -261,8 +259,7 @@ API Key 可在管理后台的「密钥」页面创建和管理。
   "status": "completed",
   "progress": 100,
   "created_at": 1709251234,
-  "width": 1792,
-  "height": 1024,
+  "size": "1792x1024",
   "image_url": "https://..."
 }`,
       },

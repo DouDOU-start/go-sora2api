@@ -112,7 +112,7 @@ func (h *CharacterHandler) CreateCharacter(c *gin.Context) {
 	// 启动后台异步处理（轮询 → 下载头像 → 上传 → 定稿）
 	go h.processCharacter(character, account, req.Username, req.DisplayName)
 
-	log.Printf("[handler] 角色已创建: %s → Cameo: %s（账号: %d）", charID, cameoID, account.ID)
+	log.Printf("[handler] 角色已创建: %s → Cameo: %s（账号: %s）", charID, cameoID, account.Email)
 
 	c.JSON(http.StatusOK, model.CharacterResponse{
 		ID:        charID,

@@ -63,8 +63,8 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[handler] 创建视频: model=%s, orientation=%s, nFrames=%d, size=%s, style=%s, mediaID=%s, 账号=%d",
-		params.Model, params.Orientation, params.NFrames, params.Size, styleID, mediaID, account.ID)
+	log.Printf("[handler] 创建视频: model=%s, orientation=%s, nFrames=%d, size=%s, style=%s, mediaID=%s, 账号=%s",
+		params.Model, params.Orientation, params.NFrames, params.Size, styleID, mediaID, account.Email)
 
 	soraTaskID, err := client.CreateVideoTaskWithOptions(
 		ctx, account.AccessToken, sentinel,
@@ -269,8 +269,8 @@ func (h *VideoHandler) finishTask(c *gin.Context, soraTaskID string, account *mo
 
 	h.taskStore.StartPolling(task, account)
 
-	log.Printf("[handler] 任务已创建: %s → Sora: %s（账号: %d, 模型: %s）",
-		taskID, soraTaskID, account.ID, modelName)
+	log.Printf("[handler] 任务已创建: %s → Sora: %s（账号: %s, 模型: %s）",
+		taskID, soraTaskID, account.Email, modelName)
 
 	c.JSON(http.StatusOK, model.VideoTaskResponse{
 		ID:        taskID,

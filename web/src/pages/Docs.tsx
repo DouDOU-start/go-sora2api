@@ -320,6 +320,12 @@ function ApiTester({
         for (const p of ep.bodyParams || []) {
           const v = bodyValues[p.name]
           if (v) {
+            // 图片创建：将 size 拆分为 width 和 height
+            if (p.name === 'size' && ep.id === 'create-image') {
+              const [w, h] = v.split('x').map(Number)
+              if (w && h) { data['width'] = w; data['height'] = h }
+              continue
+            }
             data[p.name] = p.type === 'number' || p.type === 'integer' ? Number(v) : v
           }
         }
@@ -396,7 +402,20 @@ function ApiTester({
               {p.name}
               {p.required && <span style={{ color: 'var(--danger)' }} className="ml-0.5">*</span>}
             </label>
-            {p.name === 'model' ? (
+            {p.name === 'size' && ep.id === 'create-image' ? (
+              <select
+                value={bodyValues[p.name] || '1792x1024'}
+                onChange={(e) => setBodyValues({ ...bodyValues, [p.name]: e.target.value })}
+                className="w-full px-3 py-2 text-sm outline-none transition-all font-mono cursor-pointer"
+                style={inputStyle}
+                onFocus={inputFocus}
+                onBlur={inputBlur}
+              >
+                <option value="1792x1024">1792x1024 横屏</option>
+                <option value="1024x1024">1024x1024 方形</option>
+                <option value="1024x1792">1024x1792 竖屏</option>
+              </select>
+            ) : p.name === 'model' ? (
               <select
                 value={bodyValues[p.name] || ''}
                 onChange={(e) => setBodyValues({ ...bodyValues, [p.name]: e.target.value })}
@@ -433,6 +452,13 @@ function ApiTester({
                 style={inputStyle}
                 onFocus={inputFocus as unknown as React.FocusEventHandler<HTMLTextAreaElement>}
                 onBlur={inputBlur as unknown as React.FocusEventHandler<HTMLTextAreaElement>}
+              />
+            ) : (p.name === 'input_reference' || p.name === 'video_url') ? (
+              <FileUploadInput
+                value={bodyValues[p.name] || ''}
+                onChange={(v) => setBodyValues({ ...bodyValues, [p.name]: v })}
+                placeholder={p.description}
+                accept={p.name === 'video_url' ? 'video/mp4' : 'image/png,image/jpeg,image/webp'}
               />
             ) : (
               <input
@@ -544,6 +570,82 @@ function ApiTester({
 }
 
 // ── 工具组件 ──
+
+function FileUploadInput({ value, onChange, placeholder, accept }: {
+  value: string; onChange: (v: string) => void; placeholder: string; accept: string
+}) {
+  const [fileName, setFileName] = useState<string | null>(null)
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') onChange(reader.result)
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  const handleClear = () => {
+    setFileName(null)
+    onChange('')
+  }
+
+  return (
+    <div className="space-y-2">
+      {fileName ? (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+          style={{ ...inputStyle, background: 'var(--bg-inset)' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span className="flex-1 truncate font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{fileName}</span>
+          <button
+            onClick={handleClear}
+            className="p-1 rounded cursor-pointer transition-colors flex-shrink-0"
+            style={{ color: 'var(--text-tertiary)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <input
+            value={value}
+            onChange={(e) => { setFileName(null); onChange(e.target.value) }}
+            placeholder={placeholder}
+            className="flex-1 min-w-0 px-3 py-2 text-sm outline-none transition-all font-mono"
+            style={inputStyle}
+            onFocus={inputFocus}
+            onBlur={inputBlur}
+          />
+          <label
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors flex-shrink-0"
+            style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent-soft)'; e.currentTarget.style.color = 'var(--accent)' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            上传文件
+            <input type="file" accept={accept} onChange={handleFile} className="hidden" />
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function MethodBadge({ method }: { method: string }) {
   const colors: Record<string, { fg: string; bg: string }> = {
@@ -673,7 +775,19 @@ function buildCurl(ep: ApiEndpoint, pathValues: Record<string, string>, bodyValu
     const data: Record<string, string | number> = {}
     for (const p of ep.bodyParams || []) {
       const v = bodyValues[p.name]
-      if (v) data[p.name] = p.type === 'number' ? Number(v) : v
+      if (v) {
+        if (p.name === 'size' && ep.id === 'create-image') {
+          const [w, h] = v.split('x').map(Number)
+          if (w && h) { data['width'] = w; data['height'] = h }
+          continue
+        }
+        // data URI 在 curl 示例中用占位符替代
+        if (typeof v === 'string' && v.startsWith('data:')) {
+          data[p.name] = `data:...（已上传文件）`
+        } else {
+          data[p.name] = p.type === 'number' ? Number(v) : v
+        }
+      }
       else if (p.required) data[p.name] = `<${p.name}>`
     }
     parts.push(`  -d '${JSON.stringify(data, null, 2).split('\n').join('\n  ')}'`)

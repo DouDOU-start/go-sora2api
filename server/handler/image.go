@@ -141,8 +141,8 @@ func (h *ImageHandler) CreateImageTask(c *gin.Context) {
 	// 启动后台轮询（TaskStore 根据 Type="image" 自动走 pollImageTask）
 	h.taskStore.StartPolling(task, account)
 
-	log.Printf("[handler] 图片任务已创建: %s → Sora: %s（账号: %d）",
-		taskID, soraTaskID, account.ID)
+	log.Printf("[handler] 图片任务已创建: %s → Sora: %s（账号: %s）",
+		taskID, soraTaskID, account.Email)
 
 	c.JSON(http.StatusOK, model.ImageTaskResponse{
 		ID:        taskID,
