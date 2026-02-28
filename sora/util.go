@@ -5,12 +5,23 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/url"
 	"path"
 	"strings"
 
 	http "github.com/bogdanfinn/fhttp"
 )
+
+// randSessionID 生成 8 位随机字母数字字符串，用于代理 session ID
+func randSessionID() string {
+	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, 8)
+	for i := range b {
+		b[i] = chars[rand.Intn(len(chars))]
+	}
+	return string(b)
+}
 
 // ParseProxy 解析代理字符串
 //
@@ -26,6 +37,10 @@ func ParseProxy(proxy string) string {
 	}
 
 	if strings.HasPrefix(proxy, "http://") || strings.HasPrefix(proxy, "https://") || strings.HasPrefix(proxy, "socks5://") {
+		// 替换 %s 占位符为随机 session ID（兼容代理商的粘性会话格式）
+		if strings.Contains(proxy, "%s") {
+			proxy = strings.ReplaceAll(proxy, "%s", randSessionID())
+		}
 		return proxy
 	}
 
