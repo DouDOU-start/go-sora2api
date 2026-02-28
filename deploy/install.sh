@@ -1,7 +1,8 @@
 #!/bin/bash
 #
-# Sora2API 安装脚本
-# 用法: curl -sSL https://raw.githubusercontent.com/DouDOU-start/go-sora2api/master/deploy/install.sh | sudo bash
+# Sora2API 安装 & 管理脚本
+# 安装: curl -sSL https://raw.githubusercontent.com/DouDOU-start/go-sora2api/master/deploy/install.sh | sudo bash
+# 安装后直接使用: sudo sora2api status / upgrade / logs ...
 #
 
 set -e
@@ -20,6 +21,7 @@ APP_NAME="sora2api"
 INSTALL_DIR="/opt/sora2api"
 CONFIG_DIR="/etc/sora2api"
 SERVICE_USER="sora2api"
+CLI_LINK="/usr/local/bin/sora2api"
 DEFAULT_PORT=8686
 
 # 运行时变量
@@ -271,6 +273,22 @@ EOF
     print_success "systemd 服务已安装"
 }
 
+# 安装管理命令到 /usr/local/bin/sora2api
+install_cli() {
+    print_info "正在安装管理命令..."
+    # 复制脚本自身到安装目录
+    cp "$0" "$INSTALL_DIR/manage.sh" 2>/dev/null || {
+        # 通过 pipe 执行时 $0 不可用，从远程下载
+        curl -sL "https://raw.githubusercontent.com/${GITHUB_REPO}/master/deploy/install.sh" \
+            -o "$INSTALL_DIR/manage.sh"
+    }
+    chmod +x "$INSTALL_DIR/manage.sh"
+
+    # 创建 /usr/local/bin/sora2api 符号链接
+    ln -sf "$INSTALL_DIR/manage.sh" "$CLI_LINK"
+    print_success "管理命令已安装: sora2api"
+}
+
 configure_server() {
     if ! is_interactive; then
         print_info "服务器配置: ${SERVER_HOST}:${SERVER_PORT}（默认）"
@@ -324,10 +342,80 @@ start_and_enable() {
     if systemctl start sora2api; then
         print_success "服务已启动"
     else
-        print_error "服务启动失败，请检查日志: sudo journalctl -u sora2api -n 50"
+        print_error "服务启动失败，请检查日志: sudo sora2api logs"
     fi
 
     systemctl enable sora2api 2>/dev/null && print_success "已设置开机自启"
+}
+
+# ============================================================
+# 服务管理快捷命令
+# ============================================================
+
+cmd_status() {
+    echo ""
+    echo -e "${CYAN}Sora2API 服务状态${NC}"
+    echo "=============================================="
+    echo ""
+
+    # 版本信息
+    local ver=$(get_current_version)
+    echo -e "  版本:    ${GREEN}${ver}${NC}"
+    echo -e "  安装目录: $INSTALL_DIR"
+    echo -e "  配置文件: $CONFIG_DIR/config.yaml"
+    echo ""
+
+    # systemd 状态
+    systemctl status sora2api --no-pager 2>/dev/null || print_warning "服务未安装"
+}
+
+cmd_logs() {
+    local lines="${1:-50}"
+    journalctl -u sora2api -n "$lines" --no-pager -o short-iso
+}
+
+cmd_logs_follow() {
+    journalctl -u sora2api -f -o short-iso
+}
+
+cmd_start() {
+    check_root
+    print_info "正在启动服务..."
+    if systemctl start sora2api; then
+        print_success "服务已启动"
+    else
+        print_error "启动失败，请查看日志: sudo sora2api logs"
+    fi
+}
+
+cmd_stop() {
+    check_root
+    print_info "正在停止服务..."
+    systemctl stop sora2api
+    print_success "服务已停止"
+}
+
+cmd_restart() {
+    check_root
+    print_info "正在重启服务..."
+    if systemctl restart sora2api; then
+        print_success "服务已重启"
+    else
+        print_error "重启失败，请查看日志: sudo sora2api logs"
+    fi
+}
+
+cmd_config() {
+    if [ -f "$CONFIG_DIR/config.yaml" ]; then
+        ${EDITOR:-vi} "$CONFIG_DIR/config.yaml"
+    else
+        print_error "配置文件不存在: $CONFIG_DIR/config.yaml"
+    fi
+}
+
+cmd_version() {
+    local ver=$(get_current_version)
+    echo "sora2api $ver"
 }
 
 # ============================================================
@@ -350,14 +438,21 @@ print_completion() {
     echo "  访问地址: http://${display_host}:${SERVER_PORT}"
     echo ""
     echo "=============================================="
-    echo "  常用命令"
+    echo "  管理命令（sudo sora2api <命令>）"
     echo "=============================================="
     echo ""
-    echo "  查看状态:  sudo systemctl status sora2api"
-    echo "  查看日志:  sudo journalctl -u sora2api -f"
-    echo "  重启服务:  sudo systemctl restart sora2api"
-    echo "  停止服务:  sudo systemctl stop sora2api"
-    echo "  编辑配置:  sudo vi $CONFIG_DIR/config.yaml"
+    echo "  sora2api status          查看服务状态"
+    echo "  sora2api start           启动服务"
+    echo "  sora2api stop            停止服务"
+    echo "  sora2api restart         重启服务"
+    echo "  sora2api logs            查看最近日志"
+    echo "  sora2api logs -f         实时跟踪日志"
+    echo "  sora2api config          编辑配置文件"
+    echo "  sora2api version         查看当前版本"
+    echo "  sora2api upgrade         升级到最新版本"
+    echo "  sora2api upgrade -v x.x  升级到指定版本"
+    echo "  sora2api list-versions   列出可用版本"
+    echo "  sora2api uninstall       卸载"
     echo ""
     echo "=============================================="
 }
@@ -388,9 +483,15 @@ upgrade() {
     download_and_extract
     chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/sora2api-server"
 
+    # 同时更新管理脚本
+    install_cli
+
     print_info "正在启动服务..."
     systemctl start sora2api
-    print_success "升级完成！"
+
+    local new_ver=$(get_current_version)
+    echo ""
+    print_success "升级完成！ $current -> $new_ver"
 }
 
 # ============================================================
@@ -432,9 +533,7 @@ install_version() {
     systemctl start sora2api && print_success "服务已启动" || print_error "服务启动失败"
 
     echo ""
-    print_success "指定版本安装完成！"
-    echo "  当前版本: $(get_current_version)"
-    echo ""
+    print_success "指定版本安装完成！当前版本: $(get_current_version)"
 }
 
 # ============================================================
@@ -463,6 +562,9 @@ uninstall() {
 
     rm -f /etc/systemd/system/sora2api.service
     systemctl daemon-reload
+
+    # 移除管理命令
+    rm -f "$CLI_LINK"
 
     rm -rf "$INSTALL_DIR"
     userdel "$SERVICE_USER" 2>/dev/null || true
@@ -507,14 +609,41 @@ main() {
     done
     set -- "${positional_args[@]}"
 
-    echo ""
-    echo "=============================================="
-    echo "       Sora2API 安装脚本"
-    echo "=============================================="
-    echo ""
-
     case "${1:-}" in
+        # ---- 服务管理命令（无需 banner）----
+        status)
+            cmd_status
+            ;;
+        start)
+            cmd_start
+            ;;
+        stop)
+            cmd_stop
+            ;;
+        restart)
+            cmd_restart
+            ;;
+        logs)
+            if [ "${2:-}" = "-f" ] || [ "${2:-}" = "--follow" ]; then
+                cmd_logs_follow
+            else
+                cmd_logs "${2:-50}"
+            fi
+            ;;
+        config)
+            cmd_config
+            ;;
+        version)
+            cmd_version
+            ;;
+
+        # ---- 安装/升级/卸载命令 ----
         upgrade|update)
+            echo ""
+            echo "=============================================="
+            echo "       Sora2API 升级"
+            echo "=============================================="
+            echo ""
             check_root; detect_platform; check_dependencies
             if [ -n "$target_version" ]; then
                 install_version "$target_version"
@@ -523,6 +652,11 @@ main() {
             fi
             ;;
         install)
+            echo ""
+            echo "=============================================="
+            echo "       Sora2API 安装"
+            echo "=============================================="
+            echo ""
             check_root; detect_platform; check_dependencies
             if [ -n "$target_version" ]; then
                 if [ -f "$INSTALL_DIR/sora2api-server" ]; then
@@ -530,12 +664,12 @@ main() {
                 else
                     configure_server
                     LATEST_VERSION=$(validate_version "$target_version")
-                    download_and_extract; create_user; setup_directories; install_service
+                    download_and_extract; create_user; setup_directories; install_service; install_cli
                     get_public_ip; start_and_enable; print_completion
                 fi
             else
                 configure_server; get_latest_version
-                download_and_extract; create_user; setup_directories; install_service
+                download_and_extract; create_user; setup_directories; install_service; install_cli
                 get_public_ip; start_and_enable; print_completion
             fi
             ;;
@@ -545,30 +679,41 @@ main() {
         uninstall|remove)
             check_root; uninstall
             ;;
-        --help|-h)
-            echo "用法: $0 [command] [options]"
+        --help|-h|help)
             echo ""
-            echo "命令:"
-            echo "  (无参数)         安装最新版本"
-            echo "  install          安装 Sora2API"
-            echo "  upgrade          升级到最新版本"
-            echo "  list-versions    列出可用版本"
-            echo "  uninstall        卸载 Sora2API"
+            echo "Sora2API 管理工具"
+            echo ""
+            echo "用法: sora2api <命令> [选项]"
+            echo ""
+            echo "服务管理:"
+            echo "  status             查看服务状态和版本信息"
+            echo "  start              启动服务"
+            echo "  stop               停止服务"
+            echo "  restart            重启服务"
+            echo "  logs [N]           查看最近 N 条日志（默认 50）"
+            echo "  logs -f            实时跟踪日志"
+            echo "  config             编辑配置文件"
+            echo "  version            显示当前版本"
+            echo ""
+            echo "安装与升级:"
+            echo "  install            安装 Sora2API"
+            echo "  upgrade            升级到最新版本"
+            echo "  upgrade -v <ver>   升级到指定版本"
+            echo "  list-versions      列出可用版本"
+            echo "  uninstall          卸载 Sora2API"
             echo ""
             echo "选项:"
-            echo "  -v, --version    指定版本号（例如: v1.2.0）"
-            echo "  -y, --yes        跳过确认提示"
-            echo ""
-            echo "示例:"
-            echo "  $0                        # 安装最新版本"
-            echo "  $0 install -v v1.2.0      # 安装指定版本"
-            echo "  $0 upgrade                # 升级到最新"
-            echo "  $0 upgrade -v v1.3.0      # 升级到指定版本"
-            echo "  $0 uninstall              # 卸载"
+            echo "  -v, --version      指定版本号（例如: v1.2.0）"
+            echo "  -y, --yes          跳过确认提示"
             echo ""
             ;;
-        *)
-            # 默认：全新安装
+        "")
+            # 无参数：首次安装
+            echo ""
+            echo "=============================================="
+            echo "       Sora2API 安装"
+            echo "=============================================="
+            echo ""
             check_root; detect_platform; check_dependencies
             if [ -n "$target_version" ]; then
                 if [ -f "$INSTALL_DIR/sora2api-server" ]; then
@@ -576,14 +721,19 @@ main() {
                 else
                     configure_server
                     LATEST_VERSION=$(validate_version "$target_version")
-                    download_and_extract; create_user; setup_directories; install_service
+                    download_and_extract; create_user; setup_directories; install_service; install_cli
                     get_public_ip; start_and_enable; print_completion
                 fi
             else
                 configure_server; get_latest_version
-                download_and_extract; create_user; setup_directories; install_service
+                download_and_extract; create_user; setup_directories; install_service; install_cli
                 get_public_ip; start_and_enable; print_completion
             fi
+            ;;
+        *)
+            print_error "未知命令: $1"
+            echo "运行 'sora2api help' 查看帮助"
+            exit 1
             ;;
     esac
 }
