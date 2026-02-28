@@ -1,8 +1,26 @@
 import { useEffect, useState } from 'react'
 import { getSettings, updateSettings } from '../api/settings'
+import GlassCard from '../components/ui/GlassCard'
+import LoadingState from '../components/ui/LoadingState'
+import { motion, AnimatePresence } from 'framer-motion'
+
+const inputStyle = {
+  background: 'var(--bg-inset)',
+  border: '1px solid var(--border-default)',
+  color: 'var(--text-primary)',
+  borderRadius: 'var(--radius-md)',
+}
+
+const inputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+  e.target.style.borderColor = 'var(--accent)'
+  e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'
+}
+const inputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+  e.target.style.borderColor = 'var(--border-default)'
+  e.target.style.boxShadow = 'none'
+}
 
 export default function Settings() {
-  const [apiKeys, setApiKeys] = useState('')
   const [proxyUrl, setProxyUrl] = useState('')
   const [tokenRefreshInterval, setTokenRefreshInterval] = useState('')
   const [creditSyncInterval, setCreditSyncInterval] = useState('')
@@ -15,17 +33,18 @@ export default function Settings() {
     loadSettings()
   }, [])
 
+  // 消息自动消失
+  useEffect(() => {
+    if (message) {
+      const t = setTimeout(() => setMessage(null), 3000)
+      return () => clearTimeout(t)
+    }
+  }, [message])
+
   const loadSettings = async () => {
     try {
       const res = await getSettings()
       const data = res.data
-      // api_keys 是 JSON 字符串，显示时转为每行一个
-      try {
-        const keys = JSON.parse(data.api_keys || '[]') as string[]
-        setApiKeys(keys.join('\n'))
-      } catch {
-        setApiKeys(data.api_keys || '')
-      }
       setProxyUrl(data.proxy_url || '')
       setTokenRefreshInterval(data.token_refresh_interval || '30m')
       setCreditSyncInterval(data.credit_sync_interval || '10m')
@@ -39,17 +58,8 @@ export default function Settings() {
   const handleSave = async () => {
     setSaving(true)
     setMessage(null)
-
     try {
-      // 将多行文本转为 JSON 数组
-      const keys = apiKeys
-        .split('\n')
-        .map((k) => k.trim())
-        .filter(Boolean)
-      const keysJSON = JSON.stringify(keys)
-
       await updateSettings({
-        api_keys: keysJSON,
         proxy_url: proxyUrl,
         token_refresh_interval: tokenRefreshInterval,
         credit_sync_interval: creditSyncInterval,
@@ -62,116 +72,166 @@ export default function Settings() {
     setSaving(false)
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-gray-400">加载中...</div>
-      </div>
-    )
-  }
+  if (loading) return <LoadingState />
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">系统设置</h2>
+    <div>
+      {/* 页头 */}
+      <motion.div
+        className="mb-6"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h1 className="text-2xl font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+          系统设置
+        </h1>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+          配置代理和同步策略
+        </p>
+      </motion.div>
 
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 divide-y divide-gray-200 dark:divide-gray-800">
-        {/* API Keys */}
-        <div className="p-6">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">API Keys</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            用于 /v1/ API 接口认证，每行一个 Key。留空则不需要认证。
-          </p>
-          <textarea
-            value={apiKeys}
-            onChange={(e) => setApiKeys(e.target.value)}
-            rows={4}
-            placeholder="sk-your-api-key-1&#10;sk-your-api-key-2"
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-none"
-          />
-        </div>
-
-        {/* Proxy URL */}
-        <div className="p-6">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">代理地址</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            全局 HTTP/SOCKS5 代理，所有 Sora API 请求会通过此代理。留空则直连。
-          </p>
-          <input
-            type="text"
-            value={proxyUrl}
-            onChange={(e) => setProxyUrl(e.target.value)}
-            placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-          />
-        </div>
-
-        {/* 同步设置 */}
-        <div className="p-6">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">后台同步间隔</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-            Go duration 格式，如 30m（30分钟）、1h（1小时）、6h（6小时）。修改后下个周期生效。
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Token 刷新间隔
-              </label>
-              <input
-                type="text"
-                value={tokenRefreshInterval}
-                onChange={(e) => setTokenRefreshInterval(e.target.value)}
-                placeholder="30m"
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-              />
+      <div className="space-y-4">
+        {/* 代理地址 */}
+        <GlassCard delay={0} className="overflow-hidden">
+          <div className="p-5 sm:p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: 'var(--info-soft)' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--info)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>代理地址</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                  全局 HTTP/SOCKS5 代理，所有 Sora API 请求通过此代理。留空直连。
+                </p>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                配额同步间隔
-              </label>
-              <input
-                type="text"
-                value={creditSyncInterval}
-                onChange={(e) => setCreditSyncInterval(e.target.value)}
-                placeholder="10m"
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-              />
+            <input
+              type="text"
+              value={proxyUrl}
+              onChange={(e) => setProxyUrl(e.target.value)}
+              placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
+              className="w-full px-3.5 py-2.5 text-sm outline-none transition-all"
+              style={inputStyle}
+              onFocus={inputFocus}
+              onBlur={inputBlur}
+            />
+          </div>
+        </GlassCard>
+
+        {/* 同步间隔 */}
+        <GlassCard delay={1} className="overflow-hidden">
+          <div className="p-5 sm:p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: 'var(--success-soft)' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <polyline points="1 20 1 14 7 14" />
+                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>后台同步间隔</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                  Go duration 格式，如 30m、1h、6h。修改后下个周期生效。
+                </p>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                订阅同步间隔
-              </label>
-              <input
-                type="text"
-                value={subscriptionSyncInterval}
-                onChange={(e) => setSubscriptionSyncInterval(e.target.value)}
-                placeholder="6h"
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-              />
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  Token 刷新
+                </label>
+                <input
+                  type="text"
+                  value={tokenRefreshInterval}
+                  onChange={(e) => setTokenRefreshInterval(e.target.value)}
+                  placeholder="30m"
+                  className="w-full px-3.5 py-2.5 text-sm outline-none transition-all"
+                  style={inputStyle}
+                  onFocus={inputFocus}
+                  onBlur={inputBlur}
+                />
+              </div>
+              <div>
+                <label className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  配额同步
+                </label>
+                <input
+                  type="text"
+                  value={creditSyncInterval}
+                  onChange={(e) => setCreditSyncInterval(e.target.value)}
+                  placeholder="10m"
+                  className="w-full px-3.5 py-2.5 text-sm outline-none transition-all"
+                  style={inputStyle}
+                  onFocus={inputFocus}
+                  onBlur={inputBlur}
+                />
+              </div>
+              <div>
+                <label className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  订阅同步
+                </label>
+                <input
+                  type="text"
+                  value={subscriptionSyncInterval}
+                  onChange={(e) => setSubscriptionSyncInterval(e.target.value)}
+                  placeholder="6h"
+                  className="w-full px-3.5 py-2.5 text-sm outline-none transition-all"
+                  style={inputStyle}
+                  onFocus={inputFocus}
+                  onBlur={inputBlur}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </GlassCard>
       </div>
 
-      {/* 保存按钮和消息 */}
-      <div className="flex items-center gap-4">
+      {/* 保存 & 消息 */}
+      <div className="flex items-center gap-4 mt-6">
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium text-sm hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 transition-all"
+          className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all cursor-pointer"
+          style={{ background: 'var(--accent)' }}
+          onMouseEnter={(e) => { if (!saving) e.currentTarget.style.background = 'var(--accent-hover)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)' }}
         >
-          {saving ? '保存中...' : '保存设置'}
+          {saving ? (
+            <span className="inline-flex items-center gap-2">
+              <svg className="w-4 h-4" style={{ animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              保存中...
+            </span>
+          ) : '保存设置'}
         </button>
 
-        {message && (
-          <span
-            className={`text-sm ${
-              message.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-500'
-            }`}
-          >
-            {message.text}
-          </span>
-        )}
+        <AnimatePresence>
+          {message && (
+            <motion.span
+              className="text-sm font-medium"
+              style={{ color: message.type === 'success' ? 'var(--success)' : 'var(--danger)' }}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+            >
+              {message.type === 'success' ? '✓ ' : ''}{message.text}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )

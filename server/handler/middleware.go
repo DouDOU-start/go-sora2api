@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/DouDOU-start/go-sora2api/server/model"
-	"github.com/DouDOU-start/go-sora2api/server/service"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 // JWTClaims JWT 载荷
@@ -76,13 +76,13 @@ func AdminAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	}
 }
 
-// APIKeyAuthMiddleware /v1/ API 认证中间件（动态从 SettingsStore 读取 API Keys）
-func APIKeyAuthMiddleware(settings *service.SettingsStore) gin.HandlerFunc {
+// APIKeyAuthMiddleware /v1/ API 认证中间件（从数据库查询 API Keys）
+func APIKeyAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		keys := settings.GetAPIKeys()
-
-		// 未配置 API Key 时跳过认证
-		if len(keys) == 0 {
+		// 检查是否存在启用的 API Key，若无则跳过认证（开放模式）
+		var count int64
+		db.Model(&model.SoraAPIKey{}).Where("enabled = ?", true).Count(&count)
+		if count == 0 {
 			c.Next()
 			return
 		}
@@ -103,16 +103,24 @@ func APIKeyAuthMiddleware(settings *service.SettingsStore) gin.HandlerFunc {
 			return
 		}
 
-		keySet := make(map[string]struct{}, len(keys))
-		for _, k := range keys {
-			keySet[k] = struct{}{}
-		}
-
-		if _, ok := keySet[token]; !ok {
+		var apiKey model.SoraAPIKey
+		if err := db.Where("key = ? AND enabled = ?", token, true).First(&apiKey).Error; err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": &model.TaskErrorInfo{Message: "无效的 API Key"},
 			})
 			return
+		}
+
+		// 更新使用统计
+		now := time.Now()
+		db.Model(&apiKey).Updates(map[string]interface{}{
+			"usage_count": gorm.Expr("usage_count + 1"),
+			"last_used_at": now,
+		})
+
+		// 将绑定的分组 ID 传入上下文，供调度器使用
+		if apiKey.GroupID != nil {
+			c.Set("api_key_group_id", *apiKey.GroupID)
 		}
 
 		c.Next()

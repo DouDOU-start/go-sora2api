@@ -1,5 +1,11 @@
 package model
 
+import (
+	"encoding/base64"
+	"encoding/json"
+	"strings"
+)
+
 // ---- API 请求/响应 ----
 
 // VideoSubmitRequest 创建任务请求（兼容 K8Ray Creator 的 SoraSubmitRequest）
@@ -38,7 +44,7 @@ type AdminGroupRequest struct {
 
 // AdminAccountRequest 账号创建/编辑请求
 type AdminAccountRequest struct {
-	Name         string `json:"name" binding:"required"`
+	Name         string `json:"name"`
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	GroupID      *int64 `json:"group_id"`
@@ -65,7 +71,55 @@ type DashboardStats struct {
 	FailedTasks       int64 `json:"failed_tasks"`
 }
 
+// AdminAPIKeyRequest API Key 创建/编辑请求
+type AdminAPIKeyRequest struct {
+	Name    string `json:"name" binding:"required"`
+	Key     string `json:"key"`     // 创建时必填，编辑时可选（不传则不修改）
+	GroupID *int64 `json:"group_id"`
+	Enabled *bool  `json:"enabled"`
+}
+
+// AdminAPIKeyResponse API Key 响应（含分组名和 Key 掩码）
+type AdminAPIKeyResponse struct {
+	SoraAPIKey
+	KeyHint   string `json:"key_hint"`             // Key 掩码
+	GroupName string `json:"group_name,omitempty"` // 所属分组名称
+}
+
 // ---- 工具函数 ----
+
+// ExtractEmailFromJWT 从 JWT Access Token 的 payload 中提取邮箱
+// JWT 格式为 header.payload.signature，payload 是 base64url 编码的 JSON
+func ExtractEmailFromJWT(token string) string {
+	parts := strings.SplitN(token, ".", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	// base64url 解码 payload
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var claims map[string]interface{}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	// 尝试常见的邮箱字段名
+	for _, key := range []string{"email", "https://api.openai.com/profile", "https://api.openai.com/auth", "preferred_username", "sub"} {
+		if v, ok := claims[key]; ok {
+			if s, ok := v.(string); ok && strings.Contains(s, "@") {
+				return s
+			}
+			// OpenAI JWT 的 profile/auth 字段可能是嵌套对象
+			if m, ok := v.(map[string]interface{}); ok {
+				if email, ok := m["email"].(string); ok && email != "" {
+					return email
+				}
+			}
+		}
+	}
+	return ""
+}
 
 // MaskToken 生成 Token 掩码
 func MaskToken(token string) string {

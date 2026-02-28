@@ -106,6 +106,13 @@ func (am *AccountManager) refreshAccountToken(ctx context.Context, acc *model.So
 		"last_sync_at":  time.Now(),
 	}
 
+	// 从新 AT 提取邮箱（如果之前未获取到）
+	if acc.Email == "" {
+		if email := model.ExtractEmailFromJWT(newAT); email != "" {
+			updates["email"] = email
+		}
+	}
+
 	if acc.Status == model.AccountStatusTokenExpired {
 		updates["status"] = model.AccountStatusActive
 		updates["last_error"] = ""
@@ -165,6 +172,18 @@ func (am *AccountManager) syncAccountCredit(ctx context.Context, acc *model.Sora
 		"remaining_count":    balance.RemainingCount,
 		"rate_limit_reached": balance.RateLimitReached,
 		"last_sync_at":       time.Now(),
+	}
+
+	// 补全邮箱：优先从 /me API 获取，回退到 JWT 解析
+	if acc.Email == "" {
+		if userInfo, err := client.GetUserInfo(ctx, acc.AccessToken); err == nil && userInfo.Email != "" {
+			updates["email"] = userInfo.Email
+			if acc.Name == "" && userInfo.Name != "" {
+				updates["name"] = userInfo.Name
+			}
+		} else if email := model.ExtractEmailFromJWT(acc.AccessToken); email != "" {
+			updates["email"] = email
+		}
 	}
 
 	if balance.RateLimitReached && balance.AccessResetsInSec > 0 {
@@ -262,6 +281,19 @@ func (am *AccountManager) SyncSingleAccountCredit(ctx context.Context, acc *mode
 		"rate_limit_reached": balance.RateLimitReached,
 		"last_sync_at":       time.Now(),
 	}
+
+	// 补全邮箱
+	if acc.Email == "" {
+		if userInfo, err := client.GetUserInfo(ctx, acc.AccessToken); err == nil && userInfo.Email != "" {
+			updates["email"] = userInfo.Email
+			if acc.Name == "" && userInfo.Name != "" {
+				updates["name"] = userInfo.Name
+			}
+		} else if email := model.ExtractEmailFromJWT(acc.AccessToken); email != "" {
+			updates["email"] = email
+		}
+	}
+
 	if balance.RateLimitReached && balance.AccessResetsInSec > 0 {
 		resetsAt := time.Now().Add(time.Duration(balance.AccessResetsInSec) * time.Second)
 		updates["rate_limit_resets_at"] = resetsAt

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/json"
 	"log"
 	"sync"
 	"time"
@@ -74,19 +73,6 @@ func (s *SettingsStore) GetAll() map[string]string {
 		result[k] = v
 	}
 	return result
-}
-
-// GetAPIKeys 获取 API Keys 列表
-func (s *SettingsStore) GetAPIKeys() []string {
-	raw := s.Get(model.SettingAPIKeys)
-	if raw == "" {
-		return nil
-	}
-	var keys []string
-	if err := json.Unmarshal([]byte(raw), &keys); err != nil {
-		return nil
-	}
-	return keys
 }
 
 // GetProxyURL 获取全局代理 URL

@@ -1,12 +1,195 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════
+   Sora Console — 设计系统
+   风格：Cinematic Editorial — 暗色优先
+   ═══════════════════════════════════════════ */
+
+/* ── 亮色主题 ── */
 :root {
-  --color-primary: #6366f1;
-  --color-secondary: #8b5cf6;
+  --bg-root: #f4f2ef;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #faf9f7;
+  --bg-elevated: #ffffff;
+  --bg-inset: #edeae5;
+  --bg-sidebar: #1a1a24;
+  --bg-sidebar-hover: #252533;
+  --bg-sidebar-active: #2d2d40;
+
+  --text-primary: #1a1a2e;
+  --text-secondary: #5c5c72;
+  --text-tertiary: #8e8ea0;
+  --text-inverse: #f0f0f5;
+  --text-sidebar: #b0b0c4;
+  --text-sidebar-active: #ffffff;
+
+  --border-default: #e5e2dc;
+  --border-subtle: #edebe6;
+  --border-strong: #d0cdc6;
+
+  --accent: #e85d3a;
+  --accent-soft: #fef0ec;
+  --accent-hover: #d14e2d;
+
+  --success: #22a55e;
+  --success-soft: #edfbf3;
+  --warning: #e5a20a;
+  --warning-soft: #fef9ec;
+  --danger: #dc3545;
+  --danger-soft: #fdedef;
+  --info: #3b82f6;
+  --info-soft: #eff5ff;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.08);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.03);
+
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── 暗色主题 ── */
+.dark {
+  --bg-root: #0a0a12;
+  --bg-surface: #12121e;
+  --bg-surface-hover: #18182a;
+  --bg-elevated: #1a1a2e;
+  --bg-inset: #0e0e18;
+  --bg-sidebar: #08080e;
+  --bg-sidebar-hover: #14141f;
+  --bg-sidebar-active: #1c1c30;
+
+  --text-primary: #ececf1;
+  --text-secondary: #8e8ea0;
+  --text-tertiary: #5c5c72;
+  --text-inverse: #1a1a2e;
+  --text-sidebar: #6e6e85;
+  --text-sidebar-active: #ececf1;
+
+  --border-default: #1e1e30;
+  --border-subtle: #16162a;
+  --border-strong: #2a2a42;
+
+  --accent: #ff6b47;
+  --accent-soft: #1e120f;
+  --accent-hover: #ff8566;
+
+  --success: #34d67b;
+  --success-soft: #0d1f15;
+  --warning: #f5b731;
+  --warning-soft: #1e190d;
+  --danger: #f04858;
+  --danger-soft: #1e0d0f;
+  --info: #5b9bf5;
+  --info-soft: #0d131e;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.03);
+}
+
+/* ── 全局基础样式 ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  padding: 0;
+  font-family: var(--font-sans);
+  background: var(--bg-root);
+  color: var(--text-primary);
+  line-height: 1.6;
+  transition: background 0.4s var(--ease-out-expo), color 0.4s var(--ease-out-expo);
+}
+
+/* ── 滚动条 ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ── 选中文本 ── */
+::selection {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+/* ── 焦点环 ── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── 输入框 & 文本域基础样式 ── */
+input, textarea, select {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+}
+
+/* ── 关键帧动画 ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

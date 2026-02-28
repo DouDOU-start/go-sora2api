@@ -45,8 +45,15 @@ func (h *VideoHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
+	// 从上下文获取 API Key 绑定的分组 ID（由中间件设置）
+	var groupID *int64
+	if gid, exists := c.Get("api_key_group_id"); exists {
+		id := gid.(int64)
+		groupID = &id
+	}
+
 	// 选取可用账号
-	account, err := h.scheduler.PickAccount()
+	account, err := h.scheduler.PickAccount(groupID)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": &model.TaskErrorInfo{Message: fmt.Sprintf("无可用账号: %v", err)},

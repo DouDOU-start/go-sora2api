@@ -11,5 +11,9 @@ export default defineConfig({
       '/admin': 'http://localhost:8686',
       '/health': 'http://localhost:8686',
     },
+    watch: {
+      usePolling: true,
+      interval: 500,
+    },
   },
 })

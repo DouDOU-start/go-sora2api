@@ -80,6 +80,13 @@ func (h *AdminHandler) CreateAccountDirect(c *gin.Context) {
 		}
 	}
 
+	// 从 AT 的 JWT payload 中提取邮箱
+	if account.AccessToken != "" {
+		if email := model.ExtractEmailFromJWT(account.AccessToken); email != "" {
+			account.Email = email
+		}
+	}
+
 	if err := h.db.Create(&account).Error; err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("创建账号失败: %v", err)})
 		return
@@ -122,10 +129,16 @@ func (h *AdminHandler) UpdateAccountDirect(c *gin.Context) {
 		}
 	}
 
-	account.Name = req.Name
+	if req.Name != "" {
+		account.Name = req.Name
+	}
 	account.GroupID = req.GroupID
 	if req.AccessToken != "" {
 		account.AccessToken = req.AccessToken
+		// 更新 AT 时重新提取邮箱
+		if email := model.ExtractEmailFromJWT(req.AccessToken); email != "" {
+			account.Email = email
+		}
 	}
 	if req.RefreshToken != "" {
 		account.RefreshToken = req.RefreshToken

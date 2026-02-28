@@ -28,7 +28,6 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 
 	// 返回结构化的设置
 	c.JSON(http.StatusOK, gin.H{
-		model.SettingAPIKeys:                  all[model.SettingAPIKeys],
 		model.SettingProxyURL:                 all[model.SettingProxyURL],
 		model.SettingTokenRefreshInterval:     all[model.SettingTokenRefreshInterval],
 		model.SettingCreditSyncInterval:       all[model.SettingCreditSyncInterval],
@@ -46,7 +45,6 @@ func (h *AdminHandler) UpdateSettings(c *gin.Context) {
 
 	// 只允许更新已知的配置项
 	allowedKeys := map[string]bool{
-		model.SettingAPIKeys:                  true,
 		model.SettingProxyURL:                 true,
 		model.SettingTokenRefreshInterval:     true,
 		model.SettingCreditSyncInterval:       true,

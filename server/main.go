@@ -45,7 +45,7 @@ func main() {
 	}
 
 	// 自动迁移
-	if err := db.AutoMigrate(&model.SoraAccountGroup{}, &model.SoraAccount{}, &model.SoraTask{}, &model.SoraSetting{}); err != nil {
+	if err := db.AutoMigrate(&model.SoraAccountGroup{}, &model.SoraAccount{}, &model.SoraTask{}, &model.SoraSetting{}, &model.SoraAPIKey{}); err != nil {
 		log.Fatalf("[main] 数据库迁移失败: %v", err)
 	}
 
@@ -57,14 +57,10 @@ func main() {
 		model.SettingCreditSyncInterval:       "10m",
 		model.SettingSubscriptionSyncInterval: "6h",
 	}
-	// 如果配置文件中有 API Keys，用于初始化默认值
-	if len(os.Getenv("API_KEYS")) > 0 {
-		keysJSON, _ := json.Marshal(strings.Split(os.Getenv("API_KEYS"), ","))
-		defaults[model.SettingAPIKeys] = string(keysJSON)
-	} else {
-		defaults[model.SettingAPIKeys] = "[]"
-	}
 	settings.InitDefaults(defaults)
+
+	// 兼容迁移：将环境变量 API_KEYS 或旧 sora_settings 中的 api_keys 迁移到 sora_api_keys 表
+	migrateAPIKeys(db)
 
 	// 创建组件
 	scheduler := service.NewScheduler(db, settings)
@@ -119,6 +115,50 @@ func main() {
 		log.Printf("[main] HTTP 服务关闭异常: %v", err)
 	}
 	log.Println("[main] 已退出")
+}
+
+// migrateAPIKeys 兼容迁移：将旧 sora_settings 中的 api_keys 和环境变量迁移到 sora_api_keys 表
+func migrateAPIKeys(db *gorm.DB) {
+	// 检查是否已有 API Key 记录（已迁移过则跳过）
+	var count int64
+	db.Model(&model.SoraAPIKey{}).Count(&count)
+	if count > 0 {
+		return
+	}
+
+	var keys []string
+
+	// 优先从环境变量读取
+	if envKeys := os.Getenv("API_KEYS"); envKeys != "" {
+		keys = strings.Split(envKeys, ",")
+	} else {
+		// 尝试从旧的 sora_settings 表读取
+		var setting model.SoraSetting
+		if err := db.Where("key = ?", "api_keys").First(&setting).Error; err == nil {
+			json.Unmarshal([]byte(setting.Value), &keys)
+		}
+	}
+
+	for i, k := range keys {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		apiKey := model.SoraAPIKey{
+			Name:    fmt.Sprintf("Key-%d", i+1),
+			Key:     k,
+			Enabled: true,
+		}
+		if err := db.Create(&apiKey).Error; err != nil {
+			log.Printf("[main] 迁移 API Key 失败: %v", err)
+		}
+	}
+
+	if len(keys) > 0 {
+		// 清理旧设置
+		db.Where("key = ?", "api_keys").Delete(&model.SoraSetting{})
+		log.Printf("[main] 已将 %d 个 API Key 迁移到 sora_api_keys 表", len(keys))
+	}
 }
 
 // initDB 初始化 PostgreSQL 连接（数据库不存在时自动创建）

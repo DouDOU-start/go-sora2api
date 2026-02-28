@@ -20,7 +20,8 @@ func (SoraAccountGroup) TableName() string { return "sora_account_groups" }
 type SoraAccount struct {
 	ID                int64      `json:"id" gorm:"primaryKey;autoIncrement"`
 	GroupID           *int64     `json:"group_id" gorm:"index"`
-	Name              string     `json:"name" gorm:"size:128;not null"`
+	Name              string     `json:"name" gorm:"size:128"`
+	Email             string     `json:"email" gorm:"size:256"`            // 从 JWT 自动提取
 	AccessToken       string     `json:"-" gorm:"type:text;not null"`      // 不对外暴露
 	RefreshToken      string     `json:"-" gorm:"type:text"`               // 不对外暴露
 	TokenExpiresAt    *time.Time `json:"token_expires_at"`
@@ -77,6 +78,21 @@ const (
 	TaskStatusFailed     = "failed"
 )
 
+// SoraAPIKey API 密钥（独立管理，可绑定分组）
+type SoraAPIKey struct {
+	ID         int64      `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name       string     `json:"name" gorm:"size:128;not null"`
+	Key        string     `json:"key" gorm:"size:256;not null;uniqueIndex"`
+	GroupID    *int64     `json:"group_id" gorm:"index"`
+	Enabled    bool       `json:"enabled" gorm:"not null;default:true"`
+	UsageCount int64      `json:"usage_count" gorm:"default:0"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	CreatedAt  time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt  time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+func (SoraAPIKey) TableName() string { return "sora_api_keys" }
+
 // SoraSetting KV 配置项（存储动态配置）
 type SoraSetting struct {
 	Key       string    `json:"key" gorm:"primaryKey;size:64"`
@@ -88,7 +104,6 @@ func (SoraSetting) TableName() string { return "sora_settings" }
 
 // 配置项 Key 常量
 const (
-	SettingAPIKeys                  = "api_keys"                   // JSON 数组
 	SettingProxyURL                 = "proxy_url"                  // 字符串
 	SettingTokenRefreshInterval     = "token_refresh_interval"     // Duration 字符串
 	SettingCreditSyncInterval       = "credit_sync_interval"       // Duration 字符串

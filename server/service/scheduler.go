@@ -24,28 +24,32 @@ func NewScheduler(db *gorm.DB, settings *SettingsStore) *Scheduler {
 	return &Scheduler{db: db, settings: settings}
 }
 
-// PickAccount 选取一个可用账号（最久未用优先）
+// PickAccount 选取一个可用账号（最久未用优先），groupID 不为 nil 时仅从该分组选取
 //
 // 筛选条件：
 //   - enabled=true 且 status=active
 //   - remaining_count != 0（-1=未知视为可用，0=额度用完排除）
 //   - rate_limit_reached=false 或 rate_limit_resets_at < now()（限流已解除）
+//   - 若指定 groupID，则仅选取该分组的账号
 //
 // 排序：last_used_at ASC NULLS FIRST
-func (s *Scheduler) PickAccount() (*model.SoraAccount, error) {
+func (s *Scheduler) PickAccount(groupID *int64) (*model.SoraAccount, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
 	var account model.SoraAccount
 
-	err := s.db.
+	q := s.db.
 		Where("enabled = ? AND status = ?", true, model.AccountStatusActive).
 		Where("remaining_count != 0"). // -1(未知) 或 >0 均可用
-		Where("rate_limit_reached = ? OR rate_limit_resets_at < ?", false, now).
-		Order("last_used_at ASC NULLS FIRST").
-		First(&account).Error
+		Where("rate_limit_reached = ? OR rate_limit_resets_at < ?", false, now)
 
+	if groupID != nil {
+		q = q.Where("group_id = ?", *groupID)
+	}
+
+	err := q.Order("last_used_at ASC NULLS FIRST").First(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNoAvailableAccount

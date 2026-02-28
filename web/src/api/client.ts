@@ -26,3 +26,19 @@ client.interceptors.response.use(
 )
 
 export default client
+
+// 从 Axios 错误中提取后端返回的友好错误信息
+export function getErrorMessage(err: unknown, fallback = '操作失败'): string {
+  if (axios.isAxiosError(err)) {
+    // 后端返回 { "error": "xxx" } 格式
+    const data = err.response?.data
+    if (data && typeof data === 'object' && 'error' in data) {
+      return String((data as { error: string }).error)
+    }
+    if (data && typeof data === 'object' && 'message' in data) {
+      return String((data as { message: string }).message)
+    }
+  }
+  if (err instanceof Error) return err.message
+  return fallback
+}

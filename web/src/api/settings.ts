@@ -1,7 +1,6 @@
 import client from './client'
 
 export interface SystemSettings {
-  api_keys: string
   proxy_url: string
   token_refresh_interval: string
   credit_sync_interval: string

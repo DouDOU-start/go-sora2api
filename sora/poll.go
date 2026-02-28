@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 )
 
@@ -447,6 +448,34 @@ type SubscriptionInfo struct {
 	EndTs     int64  // 订阅到期时间戳（秒）
 }
 
+// flexFloat64 兼容 JSON 中数字或字符串形式的 float64
+type flexFloat64 float64
+
+func (f *flexFloat64) UnmarshalJSON(data []byte) error {
+	// 先尝试直接解析为数字
+	var num float64
+	if err := json.Unmarshal(data, &num); err == nil {
+		*f = flexFloat64(num)
+		return nil
+	}
+	// 再尝试解析为字符串
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("end_ts 既不是数字也不是字符串: %s", string(data))
+	}
+	// 尝试解析为数字字符串
+	if num, err := strconv.ParseFloat(s, 64); err == nil {
+		*f = flexFloat64(num)
+		return nil
+	}
+	// 尝试解析为 ISO 8601 时间字符串
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		*f = flexFloat64(t.Unix())
+		return nil
+	}
+	return fmt.Errorf("end_ts 无法解析: %s", s)
+}
+
 // subscriptionResp 订阅 API 响应结构体
 type subscriptionResp struct {
 	Data []struct {
@@ -454,8 +483,39 @@ type subscriptionResp struct {
 			ID    string `json:"id"`
 			Title string `json:"title"`
 		} `json:"plan"`
-		EndTs float64 `json:"end_ts"`
+		EndTs flexFloat64 `json:"end_ts"`
 	} `json:"data"`
+}
+
+// UserInfo 用户信息
+type UserInfo struct {
+	Email string
+	Name  string
+}
+
+// GetUserInfo 获取当前用户信息（邮箱、名称等）
+func (c *Client) GetUserInfo(ctx context.Context, accessToken string) (UserInfo, error) {
+	headers := c.baseHeaders(accessToken)
+	headers["Accept"] = "application/json"
+
+	body, err := c.doGet(ctx, soraBaseURL+"/me", headers)
+	if err != nil {
+		return UserInfo{}, fmt.Errorf("获取用户信息失败: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return UserInfo{}, fmt.Errorf("解析用户信息失败: %w", err)
+	}
+
+	info := UserInfo{}
+	if email, ok := result["email"].(string); ok {
+		info.Email = email
+	}
+	if name, ok := result["name"].(string); ok {
+		info.Name = name
+	}
+	return info, nil
 }
 
 // GetSubscriptionInfo 获取当前账号的订阅信息（套餐类型、到期时间）

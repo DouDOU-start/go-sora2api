@@ -32,9 +32,9 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 	// 登录端点（无需认证）
 	r.POST("/admin/login", loginHandler(cfg.JWTSecret, cfg.AdminUser, cfg.AdminPass))
 
-	// API 端点（API Key 认证，动态从 SettingsStore 读取）
+	// API 端点（API Key 认证，从数据库查询）
 	videoHandler := NewVideoHandler(cfg.Scheduler, cfg.TaskStore)
-	api := r.Group("/v1", APIKeyAuthMiddleware(cfg.Settings))
+	api := r.Group("/v1", APIKeyAuthMiddleware(cfg.DB))
 	{
 		api.POST("/videos", videoHandler.CreateTask)
 		api.GET("/videos/:id", videoHandler.GetTaskStatus)
@@ -50,6 +50,12 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 		// 系统设置
 		admin.GET("/settings", adminHandler.GetSettings)
 		admin.PUT("/settings", adminHandler.UpdateSettings)
+
+		// API Key 管理
+		admin.GET("/api-keys", adminHandler.ListAPIKeys)
+		admin.POST("/api-keys", adminHandler.CreateAPIKey)
+		admin.PUT("/api-keys/:id", adminHandler.UpdateAPIKey)
+		admin.DELETE("/api-keys/:id", adminHandler.DeleteAPIKey)
 
 		// 账号组管理
 		admin.GET("/groups", adminHandler.ListGroups)

@@ -13,6 +13,7 @@ export interface SoraAccount {
   group_id: number | null
   group_name: string
   name: string
+  email: string
   at_hint: string
   rt_hint: string
   token_expires_at: string | null
@@ -31,7 +32,7 @@ export interface SoraAccount {
 }
 
 export interface CreateAccountRequest {
-  name: string
+  name?: string
   access_token?: string
   refresh_token?: string
   group_id?: number | null
@@ -41,5 +42,26 @@ export interface CreateAccountRequest {
 export interface CreateGroupRequest {
   name: string
   description?: string
+  enabled?: boolean
+}
+
+export interface SoraAPIKey {
+  id: number
+  name: string
+  key: string
+  key_hint: string
+  group_id: number | null
+  group_name: string
+  enabled: boolean
+  usage_count: number
+  last_used_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateAPIKeyRequest {
+  name: string
+  key?: string
+  group_id?: number | null
   enabled?: boolean
 }
