@@ -88,6 +88,8 @@ type SoraCharacter struct {
 	DisplayName  string     `json:"display_name" gorm:"size:128"`
 	Username     string     `json:"username" gorm:"size:128"`
 	ProfileURL   string     `json:"profile_url" gorm:"size:1024"`
+	ProfileImage []byte     `json:"-" gorm:"type:bytea"`                        // 头像图片二进制数据（不对外暴露）
+	IsPublic     bool       `json:"is_public" gorm:"default:false"`             // 是否公开
 	ErrorMessage string     `json:"error_message,omitempty" gorm:"type:text"`
 	CreatedAt    time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt    time.Time  `json:"updated_at" gorm:"autoUpdateTime"`

@@ -174,15 +174,25 @@ func (h *CharacterHandler) processCharacter(char *model.SoraCharacter, account *
 		return
 	}
 
-	// 5. 更新数据库
+	// 5. 自动设置角色公开
+	isPublic := false
+	if err := client.SetCharacterPublic(ctx, account.AccessToken, char.CameoID); err != nil {
+		log.Printf("[handler] 角色公开设置失败（非致命）: %s: %v", char.ID, err)
+	} else {
+		isPublic = true
+	}
+
+	// 6. 更新数据库（同时保存图片二进制数据，避免依赖外部临时 URL）
 	now := time.Now()
 	h.db.Model(&model.SoraCharacter{}).Where("id = ?", char.ID).Updates(map[string]interface{}{
-		"status":       model.CharacterStatusReady,
-		"character_id": characterID,
-		"display_name": displayName,
-		"username":     username,
-		"profile_url":  cameoStatus.ProfileAssetURL,
-		"completed_at": &now,
+		"status":        model.CharacterStatusReady,
+		"character_id":  characterID,
+		"display_name":  displayName,
+		"username":      username,
+		"profile_url":   cameoStatus.ProfileAssetURL,
+		"profile_image": imgData,
+		"is_public":     isPublic,
+		"completed_at":  &now,
 	})
 
 	log.Printf("[handler] 角色处理完成: %s → Character: %s", char.ID, characterID)

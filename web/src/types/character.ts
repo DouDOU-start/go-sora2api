@@ -9,6 +9,7 @@ export interface SoraCharacter {
   display_name: string
   username: string
   profile_url: string
+  is_public: boolean
   error_message: string
   account_email: string
   created_at: string

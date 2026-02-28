@@ -216,15 +216,25 @@ func (c *Client) FinalizeCharacter(ctx context.Context, accessToken, cameoID, us
 
 // SetCharacterPublic 设置角色为公开
 func (c *Client) SetCharacterPublic(ctx context.Context, accessToken, cameoID string) error {
+	return c.SetCharacterVisibility(ctx, accessToken, cameoID, "public")
+}
+
+// SetCharacterPrivate 设置角色为私密
+func (c *Client) SetCharacterPrivate(ctx context.Context, accessToken, cameoID string) error {
+	return c.SetCharacterVisibility(ctx, accessToken, cameoID, "private")
+}
+
+// SetCharacterVisibility 设置角色可见性（public/private）
+func (c *Client) SetCharacterVisibility(ctx context.Context, accessToken, cameoID, visibility string) error {
 	headers := c.jsonHeaders(accessToken)
 
 	payload := map[string]interface{}{
-		"visibility": "public",
+		"visibility": visibility,
 	}
 
 	_, err := c.doPost(ctx, soraBaseURL+"/project_y/cameos/by_id/"+cameoID+"/update_v2", headers, payload)
 	if err != nil {
-		return fmt.Errorf("设置角色公开失败: %w", err)
+		return fmt.Errorf("设置角色可见性失败: %w", err)
 	}
 
 	return nil

@@ -44,21 +44,31 @@ func ValidateJWT(secret, tokenStr string) (*JWTClaims, error) {
 	return nil, jwt.ErrSignatureInvalid
 }
 
-// AdminAuthMiddleware 管理端认证中间件（仅 JWT）
+// AdminAuthMiddleware 管理端认证中间件（JWT，支持 Header 和 query 参数）
 func AdminAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var token string
+
+		// 优先从 Authorization Header 读取
 		auth := c.GetHeader("Authorization")
-		if auth == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "缺少 Authorization 头",
-			})
-			return
+		if auth != "" {
+			token = strings.TrimPrefix(auth, "Bearer ")
+			if token == auth {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": "Authorization 格式错误，需要 Bearer Token",
+				})
+				return
+			}
 		}
 
-		token := strings.TrimPrefix(auth, "Bearer ")
-		if token == auth {
+		// 其次从 query 参数读取（用于 img 标签等无法设置 Header 的场景）
+		if token == "" {
+			token = c.Query("token")
+		}
+
+		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Authorization 格式错误，需要 Bearer Token",
+				"error": "缺少认证凭据",
 			})
 			return
 		}

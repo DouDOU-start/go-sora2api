@@ -111,6 +111,8 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 		// 角色管理
 		admin.GET("/characters", adminHandler.ListCharacters)
 		admin.GET("/characters/:id", adminHandler.GetCharacterAdmin)
+		admin.GET("/characters/:id/image", adminHandler.GetCharacterImage)
+		admin.POST("/characters/:id/visibility", adminHandler.ToggleCharacterVisibility)
 		admin.DELETE("/characters/:id", adminHandler.DeleteCharacterAdmin)
 	}
 

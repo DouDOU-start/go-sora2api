@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { listCharacters, deleteCharacter } from '../api/character'
+import { listCharacters, deleteCharacter, toggleCharacterVisibility, getCharacterImageUrl } from '../api/character'
 import type { SoraCharacter } from '../types/character'
 import GlassCard from '../components/ui/GlassCard'
 import StatusBadge from '../components/ui/StatusBadge'
@@ -46,6 +46,9 @@ export default function CharacterList() {
   // 删除确认
   const [deleteTarget, setDeleteTarget] = useState<SoraCharacter | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // 可见性切换
+  const [toggling, setToggling] = useState(false)
 
   // 复制反馈
   const [copied, setCopied] = useState(false)
@@ -98,6 +101,22 @@ export default function CharacterList() {
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  const handleToggleVisibility = async (char: SoraCharacter) => {
+    setToggling(true)
+    try {
+      const res = await toggleCharacterVisibility(char.id)
+      toast.success(res.data.message)
+      // 更新本地状态
+      const updated = { ...char, is_public: res.data.is_public }
+      setCharacters((prev) => prev.map((c) => c.id === char.id ? updated : c))
+      if (selectedChar?.id === char.id) setSelectedChar(updated)
+    } catch (err) {
+      toast.error(getErrorMessage(err, '切换可见性失败'))
+    } finally {
+      setToggling(false)
+    }
   }
 
   return (
@@ -160,9 +179,9 @@ export default function CharacterList() {
                   className="aspect-square w-full overflow-hidden flex items-center justify-center"
                   style={{ background: 'var(--bg-inset)' }}
                 >
-                  {char.profile_url ? (
+                  {(char.status === 'ready' || char.profile_url) ? (
                     <img
-                      src={char.profile_url}
+                      src={char.status === 'ready' ? getCharacterImageUrl(char.id) : char.profile_url}
                       alt={char.display_name || char.username}
                       className="w-full h-full object-cover"
                       loading="lazy"
@@ -186,11 +205,24 @@ export default function CharacterList() {
                     </h3>
                     <StatusBadge status={statusMap[char.status] || char.status} />
                   </div>
-                  {char.username && (
-                    <p className="text-xs truncate mb-1" style={{ color: 'var(--text-tertiary)' }}>
-                      @{char.username}
-                    </p>
-                  )}
+                  <div className="flex items-center gap-1.5 mb-1">
+                    {char.username && (
+                      <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>
+                        @{char.username}
+                      </p>
+                    )}
+                    {char.status === 'ready' && (
+                      <span
+                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0"
+                        style={{
+                          background: char.is_public ? 'var(--success-soft)' : 'var(--bg-inset)',
+                          color: char.is_public ? 'var(--success)' : 'var(--text-tertiary)',
+                        }}
+                      >
+                        {char.is_public ? '公开' : '私密'}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                     {formatDistanceToNow(new Date(char.created_at), { addSuffix: true, locale: zhCN })}
                     {char.account_email && ` · ${char.account_email}`}
@@ -262,13 +294,13 @@ export default function CharacterList() {
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* 头像区域 */}
-                {selectedChar.profile_url && (
+                {(selectedChar.status === 'ready' || selectedChar.profile_url) && (
                   <div
                     className="w-full aspect-video overflow-hidden flex items-center justify-center"
                     style={{ background: 'var(--bg-inset)' }}
                   >
                     <img
-                      src={selectedChar.profile_url}
+                      src={selectedChar.status === 'ready' ? getCharacterImageUrl(selectedChar.id) : selectedChar.profile_url}
                       alt={selectedChar.display_name}
                       className="w-full h-full object-cover"
                     />
@@ -298,6 +330,31 @@ export default function CharacterList() {
                       <DetailRow label="关联账号" value={selectedChar.account_email} />
                     )}
                     <DetailRow label="状态" value={statusLabel[selectedChar.status] || selectedChar.status} />
+                    {selectedChar.status === 'ready' && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-medium flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>可见性</span>
+                        <button
+                          onClick={() => handleToggleVisibility(selectedChar)}
+                          disabled={toggling}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer disabled:opacity-50"
+                          style={{
+                            background: selectedChar.is_public ? 'var(--success-soft)' : 'var(--bg-inset)',
+                            color: selectedChar.is_public ? 'var(--success)' : 'var(--text-tertiary)',
+                          }}
+                        >
+                          {selectedChar.is_public ? (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                            </svg>
+                          ) : (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
+                            </svg>
+                          )}
+                          {toggling ? '切换中...' : selectedChar.is_public ? '公开 · 点击设为私密' : '私密 · 点击设为公开'}
+                        </button>
+                      </div>
+                    )}
                     <DetailRow label="创建时间" value={new Date(selectedChar.created_at).toLocaleString('zh-CN')} />
                     {selectedChar.completed_at && (
                       <DetailRow label="完成时间" value={new Date(selectedChar.completed_at).toLocaleString('zh-CN')} />
