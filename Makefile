@@ -3,11 +3,20 @@ SERVER_BIN  := bin/$(APP_NAME)-server
 CLI_BIN     := bin/$(APP_NAME)
 MODULE      := github.com/DouDOU-start/go-sora2api
 
+# 版本信息
+VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT      := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+DATE        := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+
 # Go 参数
 GOFLAGS     := -trimpath
-LDFLAGS     := -s -w
+VERSION_PKG := main
+LDFLAGS     := -s -w -X $(VERSION_PKG).version=$(VERSION) -X $(VERSION_PKG).commit=$(COMMIT) -X $(VERSION_PKG).date=$(DATE)
 
-.PHONY: all install build server cli web-build run dev dev-server dev-web clean clean-all fmt lint lint-web vet tidy help
+# Release 平台
+PLATFORMS   := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+
+.PHONY: all install build server cli web-build run dev dev-server dev-web clean clean-all fmt lint lint-web vet tidy release help
 
 ## —— 常用 ——————————————————————————————————
 
@@ -92,6 +101,30 @@ lint-web:  ## 前端代码检查
 tidy:  ## 整理 Go 依赖
 	go mod tidy
 
+## —— 发布 ——————————————————————————————————
+
+release: web-build  ## 交叉编译多平台发布包
+	@echo "==> 构建发布包 $(VERSION)..."
+	@rm -rf release/
+	@for platform in $(PLATFORMS); do \
+		os=$${platform%/*}; arch=$${platform#*/}; \
+		output="release/$(APP_NAME)-server_$${os}_$${arch}"; \
+		echo "  构建 $${os}/$${arch}..."; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $$output ./server/; \
+	done
+	@echo "==> 打包..."
+	@cd release && for f in $(APP_NAME)-server_*; do \
+		name=$${f%.*}; \
+		ver=$$(echo $(VERSION) | sed 's/^v//'); \
+		tarname="$(APP_NAME)_$${ver}_$${f#$(APP_NAME)-server_}"; \
+		cp $$f $(APP_NAME)-server; \
+		tar czf "$${tarname}.tar.gz" $(APP_NAME)-server; \
+		rm $(APP_NAME)-server; \
+	done
+	@echo "==> 生成 checksums..."
+	@cd release && sha256sum *.tar.gz > checksums.txt
+	@echo "==> 发布包就绪: release/"
+
 ## —— 清理 ——————————————————————————————————
 
 clean:  ## 清理 Go 构建产物
@@ -100,3 +133,4 @@ clean:  ## 清理 Go 构建产物
 clean-all: clean  ## 清理全部（含前端构建产物）
 	rm -rf server/dist/
 	rm -rf web/dist/
+	rm -rf release/

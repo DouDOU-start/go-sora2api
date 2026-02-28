@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build frontend
+        run: |
+          cd web && npm install --silent && npm run build
+          rm -rf ../server/dist
+          cp -r dist ../server/dist
+
+      - name: Cross compile
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          COMMIT=${GITHUB_SHA::7}
+          DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}"
+
+          platforms=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64")
+
+          mkdir -p release
+          for platform in "${platforms[@]}"; do
+            os="${platform%/*}"
+            arch="${platform#*/}"
+            echo "Building ${os}/${arch}..."
+            GOOS=$os GOARCH=$arch CGO_ENABLED=0 \
+              go build -trimpath -ldflags "$LDFLAGS" \
+              -o "release/sora2api-server" ./server/
+
+            ver="${VERSION#v}"
+            tar czf "release/sora2api_${ver}_${os}_${arch}.tar.gz" \
+              -C release sora2api-server
+            rm release/sora2api-server
+          done
+
+          cd release && sha256sum *.tar.gz > checksums.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/*

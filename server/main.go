@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -24,7 +25,22 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// 版本信息（编译时通过 -ldflags 注入）
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+)
+
 func main() {
+	// --version 参数
+	showVersion := flag.Bool("version", false, "显示版本信息")
+	flag.Parse()
+	if *showVersion {
+		fmt.Printf("sora2api %s (commit=%s, built=%s)\n", version, commit, date)
+		os.Exit(0)
+	}
+
 	// 配置文件路径（支持环境变量覆盖）
 	configPath := "server/config.yaml"
 	if p := os.Getenv("CONFIG_PATH"); p != "" {

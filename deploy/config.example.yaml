@@ -1,0 +1,11 @@
+server:
+  host: "0.0.0.0"
+  port: 8686
+  admin_user: "admin"
+  admin_password: "admin123"
+  # jwt_secret: ""  # 留空则自动生成
+
+database:
+  url: "postgres://postgres:postgres@localhost:5432/sora2api?sslmode=disable"
+  log_level: "warn"
+  auto_migrate: true
