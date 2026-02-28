@@ -21,5 +21,10 @@ func (h *AdminHandler) GetDashboard(c *gin.Context) {
 	h.db.Model(&model.SoraTask{}).Where("status = ?", model.TaskStatusCompleted).Count(&stats.CompletedTasks)
 	h.db.Model(&model.SoraTask{}).Where("status = ?", model.TaskStatusFailed).Count(&stats.FailedTasks)
 
+	h.db.Model(&model.SoraCharacter{}).Count(&stats.TotalCharacters)
+	h.db.Model(&model.SoraCharacter{}).Where("status = ?", model.CharacterStatusReady).Count(&stats.ReadyCharacters)
+	h.db.Model(&model.SoraCharacter{}).Where("status = ?", model.CharacterStatusProcessing).Count(&stats.ProcessingCharacters)
+	h.db.Model(&model.SoraCharacter{}).Where("status = ?", model.CharacterStatusFailed).Count(&stats.FailedCharacters)
+
 	c.JSON(http.StatusOK, stats)
 }

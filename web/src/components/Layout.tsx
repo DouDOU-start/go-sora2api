@@ -10,6 +10,7 @@ const navItems = [
   { path: '/groups', label: '分组', icon: FolderIcon },
   { path: '/api-keys', label: '密钥', icon: KeyIcon },
   { path: '/tasks', label: '任务', icon: ListIcon },
+  { path: '/characters', label: '角色', icon: CharacterIcon },
   { path: '/docs', label: '文档', icon: BookIcon },
   { path: '/settings', label: '设置', icon: GearIcon },
 ]
@@ -450,6 +451,17 @@ function SunIcon() {
       <line x1="21" y1="12" x2="23" y2="12" />
       <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
       <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  )
+}
+
+function CharacterIcon({ active }: { active?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? 'var(--accent)' : 'currentColor'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M6 21v-1a6 6 0 0112 0v1" />
+      <path d="M16 3.13a4 4 0 010 7.75" />
+      <path d="M21 21v-1a4 4 0 00-3-3.87" />
     </svg>
   )
 }

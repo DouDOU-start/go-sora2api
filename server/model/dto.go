@@ -169,6 +169,10 @@ type DashboardStats struct {
 	PendingTasks      int64 `json:"pending_tasks"`
 	CompletedTasks    int64 `json:"completed_tasks"`
 	FailedTasks       int64 `json:"failed_tasks"`
+	TotalCharacters      int64 `json:"total_characters"`
+	ReadyCharacters      int64 `json:"ready_characters"`
+	ProcessingCharacters int64 `json:"processing_characters"`
+	FailedCharacters     int64 `json:"failed_characters"`
 }
 
 // AdminAPIKeyRequest API Key 创建/编辑请求
@@ -184,6 +188,12 @@ type AdminAPIKeyResponse struct {
 	SoraAPIKey
 	KeyHint   string `json:"key_hint"`             // Key 掩码
 	GroupName string `json:"group_name,omitempty"` // 所属分组名称
+}
+
+// AdminCharacterResponse 角色管理响应（含关联账号邮箱）
+type AdminCharacterResponse struct {
+	SoraCharacter
+	AccountEmail string `json:"account_email,omitempty"` // 关联账号邮箱
 }
 
 // ---- 工具函数 ----

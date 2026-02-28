@@ -107,6 +107,11 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 		admin.GET("/tasks", adminHandler.ListTasks)
 		admin.GET("/tasks/:id", adminHandler.GetTask)
 		admin.GET("/tasks/:id/content", adminHandler.DownloadTaskContent)
+
+		// 角色管理
+		admin.GET("/characters", adminHandler.ListCharacters)
+		admin.GET("/characters/:id", adminHandler.GetCharacterAdmin)
+		admin.DELETE("/characters/:id", adminHandler.DeleteCharacterAdmin)
 	}
 
 	return r

@@ -43,6 +43,13 @@ export default function Dashboard() {
     { label: '失败', value: stats.failed_tasks, color: 'var(--danger)', softColor: 'var(--danger-soft)', icon: XCircleIcon },
   ]
 
+  const characterCards = [
+    { label: '总角色', value: stats.total_characters, color: 'var(--info)', softColor: 'var(--info-soft)', icon: CharacterTotalIcon },
+    { label: '就绪', value: stats.ready_characters, color: 'var(--success)', softColor: 'var(--success-soft)', icon: CheckCircleIcon },
+    { label: '处理中', value: stats.processing_characters, color: 'var(--warning)', softColor: 'var(--warning-soft)', icon: ClockIcon },
+    { label: '失败', value: stats.failed_characters, color: 'var(--danger)', softColor: 'var(--danger-soft)', icon: XCircleIcon },
+  ]
+
   return (
     <div>
       {/* 页头 */}
@@ -90,13 +97,42 @@ export default function Dashboard() {
       </div>
 
       {/* 任务统计 */}
-      <div>
+      <div className="mb-6">
         <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>
           任务状态
         </h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {taskCards.map((card, i) => (
             <GlassCard key={card.label} hover delay={i + 4} className="p-4 sm:p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                    {card.label}
+                  </p>
+                  <p className="text-2xl sm:text-3xl font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                    {card.value}
+                  </p>
+                </div>
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: card.softColor }}
+                >
+                  <card.icon color={card.color} />
+                </div>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      </div>
+
+      {/* 角色统计 */}
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>
+          角色状态
+        </h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {characterCards.map((card, i) => (
+            <GlassCard key={card.label} hover delay={i + 8} className="p-4 sm:p-5">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-tertiary)' }}>
@@ -184,6 +220,14 @@ function XCircleIcon({ color }: { color: string }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+    </svg>
+  )
+}
+
+function CharacterTotalIcon({ color }: { color: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4" /><path d="M6 21v-1a6 6 0 0112 0v1" />
     </svg>
   )
 }

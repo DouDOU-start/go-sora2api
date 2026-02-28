@@ -25,4 +25,8 @@ export interface DashboardStats {
   pending_tasks: number
   completed_tasks: number
   failed_tasks: number
+  total_characters: number
+  ready_characters: number
+  processing_characters: number
+  failed_characters: number
 }
