@@ -2,7 +2,7 @@ import client from './client'
 import type { SoraCharacter } from '../types/character'
 import type { PageResponse } from '../types/api'
 
-export function listCharacters(params: { status?: string; page?: number; page_size?: number }) {
+export function listCharacters(params: { status?: string; is_public?: boolean; page?: number; page_size?: number }) {
   return client.get<PageResponse<SoraCharacter>>('/admin/characters', { params })
 }
 

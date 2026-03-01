@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { listAllAccounts, createAccount, updateAccount, deleteAccount, refreshAccountToken, getAccountStatus, revealAccountTokens, batchImportAccounts } from '../api/account'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { listAccounts, createAccount, updateAccount, deleteAccount, refreshAccountToken, getAccountStatus, revealAccountTokens, batchImportAccounts } from '../api/account'
 import { listGroups } from '../api/group'
 import type { SoraAccount, CreateAccountRequest, SoraAccountGroup, BatchImportResult } from '../types/account'
 import GlassCard from '../components/ui/GlassCard'
@@ -26,24 +26,43 @@ const inputStyle = {
   color: 'var(--text-primary)',
   borderRadius: 'var(--radius-md)',
 }
-const inputFocus = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-  e.target.style.borderColor = 'var(--accent)'
-  e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'
+const inputFocus = (e: React.FocusEvent<HTMLElement>) => {
+  (e.target as HTMLElement).style.borderColor = 'var(--accent)';
+  (e.target as HTMLElement).style.boxShadow = '0 0 0 3px var(--accent-soft)'
 }
-const inputBlur = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-  e.target.style.borderColor = 'var(--border-default)'
-  e.target.style.boxShadow = 'none'
+const inputBlur = (e: React.FocusEvent<HTMLElement>) => {
+  (e.target as HTMLElement).style.borderColor = 'var(--border-default)';
+  (e.target as HTMLElement).style.boxShadow = 'none'
 }
+
+const statusFilters = [
+  { label: '全部', value: '' },
+  { label: '正常', value: 'active' },
+  { label: 'Token 过期', value: 'token_expired' },
+  { label: '额度耗尽', value: 'quota_exhausted' },
+]
+
+const PAGE_SIZE = 20
 
 export default function AccountList() {
   const [accounts, setAccounts] = useState<SoraAccount[]>([])
+  const [total, setTotal] = useState(0)
   const [groups, setGroups] = useState<SoraAccountGroup[]>([])
   const [loading, setLoading] = useState(true)
+
+  // 筛选 & 分页
+  const [status, setStatus] = useState('')
+  const [groupId, setGroupId] = useState<string>('')
+  const [keyword, setKeyword] = useState('')
+  const [inputKeyword, setInputKeyword] = useState('')
+  const [page, setPage] = useState(1)
+
+  // 表单
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [form, setForm] = useState<CreateAccountRequest>({ ...emptyForm })
   const [submitting, setSubmitting] = useState(false)
-  const [refreshKey, setRefreshKey] = useState(0)
+
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
   const [confirmState, setConfirmState] = useState<{ open: boolean; id: number }>({ open: false, id: 0 })
   const [revealedTokens, setRevealedTokens] = useState<Record<number, { access_token: string; refresh_token: string }>>({})
@@ -54,25 +73,38 @@ export default function AccountList() {
   const [batchGroupId, setBatchGroupId] = useState<number | null>(null)
   const [batchImporting, setBatchImporting] = useState(false)
   const [batchResult, setBatchResult] = useState<BatchImportResult | null>(null)
-  const reload = useCallback(() => setRefreshKey((k) => k + 1), [])
+
+  const mountedRef = useRef(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [aRes, gRes] = await Promise.all([
+        listAccounts({ page, page_size: PAGE_SIZE, status: status || undefined, group_id: groupId ? Number(groupId) : undefined, keyword: keyword || undefined }),
+        listGroups(),
+      ])
+      if (mountedRef.current) {
+        setAccounts(aRes.data.list ?? [])
+        setTotal(aRes.data.total)
+        setGroups(gRes.data ?? [])
+      }
+    } catch { /* ignore */ }
+    if (mountedRef.current) setLoading(false)
+  }, [page, status, groupId, keyword])
+
+  useEffect(() => {
+    mountedRef.current = true
+    load()
+    return () => { mountedRef.current = false }
+  }, [load])
+
+  const reload = useCallback(() => load(), [load])
 
   const closeForm = () => {
     setShowForm(false)
     setEditId(null)
     setForm({ ...emptyForm })
   }
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [aRes, gRes] = await Promise.all([listAllAccounts(), listGroups()])
-        setAccounts(aRes.data ?? [])
-        setGroups(gRes.data ?? [])
-      } catch { /* ignore */ }
-      setLoading(false)
-    }
-    load()
-  }, [refreshKey])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -196,13 +228,21 @@ export default function AccountList() {
     setBatchResult(null)
   }
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    setKeyword(inputKeyword)
+    setPage(1)
+  }
+
+  const totalPages = Math.ceil(total / PAGE_SIZE)
+
   if (loading) return <LoadingState />
 
   return (
     <div>
       {/* 页头 */}
       <motion.div
-        className="flex items-center justify-between mb-6"
+        className="flex items-center justify-between mb-4"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
       >
@@ -211,7 +251,7 @@ export default function AccountList() {
             账号管理
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-            共 {accounts.length} 个账号
+            共 {total} 个账号
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -235,6 +275,72 @@ export default function AccountList() {
           </button>
         </div>
       </motion.div>
+
+      {/* 筛选栏 */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-5 flex-wrap">
+        <div
+          className="flex items-center gap-0.5 p-1 rounded-xl"
+          style={{ background: 'var(--bg-inset)' }}
+        >
+          {statusFilters.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => { setStatus(f.value); setPage(1) }}
+              className="px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all cursor-pointer"
+              style={{
+                background: status === f.value ? 'var(--bg-surface)' : 'transparent',
+                color: status === f.value ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                boxShadow: status === f.value ? 'var(--shadow-sm)' : 'none',
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={groupId}
+          onChange={(e) => { setGroupId(e.target.value); setPage(1) }}
+          className="px-3 py-1.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
+          style={{ ...inputStyle, minWidth: 120 }}
+          onFocus={inputFocus}
+          onBlur={inputBlur}
+        >
+          <option value="">全部分组</option>
+          {groups.map(g => (
+            <option key={g.id} value={g.id}>{g.name}</option>
+          ))}
+        </select>
+        <form onSubmit={handleSearch} className="flex items-center gap-2 flex-1">
+          <input
+            value={inputKeyword}
+            onChange={(e) => setInputKeyword(e.target.value)}
+            placeholder="搜索邮箱或备注名"
+            className="flex-1 px-3 py-1.5 text-sm outline-none transition-all"
+            style={{ ...inputStyle, minWidth: 160 }}
+            onFocus={inputFocus}
+            onBlur={inputBlur}
+          />
+          <button
+            type="submit"
+            className="px-3 py-1.5 rounded-xl text-sm font-medium transition-all cursor-pointer"
+            style={{ background: 'var(--accent)', color: '#fff' }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
+          >
+            搜索
+          </button>
+          {(keyword || status || groupId) && (
+            <button
+              type="button"
+              onClick={() => { setInputKeyword(''); setKeyword(''); setStatus(''); setGroupId(''); setPage(1) }}
+              className="px-3 py-1.5 rounded-xl text-sm font-medium transition-all cursor-pointer"
+              style={{ background: 'var(--bg-inset)', color: 'var(--text-tertiary)' }}
+            >
+              清除
+            </button>
+          )}
+        </form>
+      </div>
 
       {/* 账号列表 */}
       {accounts.length === 0 ? (
@@ -369,6 +475,31 @@ export default function AccountList() {
               </div>
             </GlassCard>
           ))}
+        </div>
+      )}
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 mt-8">
+          <button
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page === 1}
+            className="px-4 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}
+          >
+            上一页
+          </button>
+          <span className="text-sm tabular-nums px-2" style={{ color: 'var(--text-tertiary)' }}>
+            {page} / {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page === totalPages}
+            className="px-4 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}
+          >
+            下一页
+          </button>
         </div>
       )}
 
@@ -540,8 +671,8 @@ export default function AccountList() {
                 placeholder={'rt_xxxxxxxx（Refresh Token，rt_ 开头）\neyJhbGci...（Access Token，JWT 格式）\n...'}
                 className="w-full px-3 py-2.5 text-sm outline-none transition-all resize-none"
                 style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: '12px', lineHeight: '1.6' }}
-                onFocus={inputFocus as React.FocusEventHandler<HTMLTextAreaElement>}
-                onBlur={inputBlur as React.FocusEventHandler<HTMLTextAreaElement>}
+                onFocus={inputFocus}
+                onBlur={inputBlur}
               />
               <p className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
                 以 <code style={{ fontFamily: 'var(--font-mono)' }}>rt_</code> 开头识别为 RT，否则视为 AT。以邮箱为唯一标识，已存在则更新 Token。

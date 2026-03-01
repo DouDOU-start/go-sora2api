@@ -6,7 +6,7 @@ export function getDashboard() {
   return client.get<DashboardStats>('/admin/dashboard')
 }
 
-export function listTasks(params: { status?: string; page?: number; page_size?: number }) {
+export function listTasks(params: { status?: string; type?: string; page?: number; page_size?: number }) {
   return client.get<PageResponse<SoraTask>>('/admin/tasks', { params })
 }
 

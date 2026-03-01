@@ -19,6 +19,12 @@ const statusFilters = [
   { label: '失败', value: 'failed' },
 ]
 
+const visibilityFilters = [
+  { label: '全部', value: '' },
+  { label: '公开', value: 'true' },
+  { label: '私密', value: 'false' },
+]
+
 // 角色状态映射到 StatusBadge 可识别的值
 const statusMap: Record<string, string> = {
   processing: 'in_progress',
@@ -39,6 +45,7 @@ export default function CharacterList() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('')
+  const [isPublic, setIsPublic] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 20
   const mountedRef = useRef(true)
@@ -58,7 +65,11 @@ export default function CharacterList() {
 
   const load = async () => {
     try {
-      const res = await listCharacters({ status: status || undefined, page, page_size: pageSize })
+      const params: { status?: string; is_public?: boolean; page: number; page_size: number } = { page, page_size: pageSize }
+      if (status) params.status = status
+      if (isPublic === 'true') params.is_public = true
+      else if (isPublic === 'false') params.is_public = false
+      const res = await listCharacters(params)
       if (mountedRef.current) {
         setCharacters(res.data.list ?? [])
         setTotal(res.data.total)
@@ -71,7 +82,7 @@ export default function CharacterList() {
     setLoading(true)
     load().finally(() => { if (mountedRef.current) setLoading(false) })
     return () => { mountedRef.current = false }
-  }, [status, page])
+  }, [status, isPublic, page])
 
   // 自动刷新（有 processing 角色或查看全部时）
   useEffect(() => {
@@ -79,7 +90,7 @@ export default function CharacterList() {
       const timer = setInterval(load, 10000)
       return () => clearInterval(timer)
     }
-  }, [status, page])
+  }, [status, isPublic, page])
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -153,6 +164,27 @@ export default function CharacterList() {
                 background: status === f.value ? 'var(--bg-surface)' : 'transparent',
                 color: status === f.value ? 'var(--text-primary)' : 'var(--text-tertiary)',
                 boxShadow: status === f.value ? 'var(--shadow-sm)' : 'none',
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 可见性筛选 */}
+        <div
+          className="flex items-center gap-0.5 p-1 rounded-xl self-start"
+          style={{ background: 'var(--bg-inset)' }}
+        >
+          {visibilityFilters.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => { setIsPublic(f.value); setPage(1) }}
+              className="px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all cursor-pointer"
+              style={{
+                background: isPublic === f.value ? 'var(--bg-surface)' : 'transparent',
+                color: isPublic === f.value ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                boxShadow: isPublic === f.value ? 'var(--shadow-sm)' : 'none',
               }}
             >
               {f.label}

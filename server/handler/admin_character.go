@@ -10,9 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ListCharacters GET /admin/characters — 角色列表（分页 + 状态筛选）
+// ListCharacters GET /admin/characters — 角色列表（分页 + 状态筛选 + is_public 筛选）
 func (h *AdminHandler) ListCharacters(c *gin.Context) {
 	status := c.Query("status")
+	isPublicStr := c.Query("is_public")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
@@ -27,6 +28,12 @@ func (h *AdminHandler) ListCharacters(c *gin.Context) {
 	query := h.db.Model(&model.SoraCharacter{}).Omit("profile_image")
 	if status != "" {
 		query = query.Where("status = ?", status)
+	}
+	switch isPublicStr {
+	case "true":
+		query = query.Where("is_public = ?", true)
+	case "false":
+		query = query.Where("is_public = ?", false)
 	}
 
 	var total int64

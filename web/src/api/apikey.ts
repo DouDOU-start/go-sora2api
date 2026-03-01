@@ -1,8 +1,9 @@
 import client from './client'
 import type { SoraAPIKey, CreateAPIKeyRequest } from '../types/account'
+import type { PageResponse } from '../types/api'
 
-export function listAPIKeys() {
-  return client.get<SoraAPIKey[]>('/admin/api-keys')
+export function listAPIKeys(params?: { page?: number; page_size?: number; keyword?: string; enabled?: boolean; group_id?: number | 'null' }) {
+  return client.get<PageResponse<SoraAPIKey>>('/admin/api-keys', { params })
 }
 
 export function createAPIKey(data: CreateAPIKeyRequest) {

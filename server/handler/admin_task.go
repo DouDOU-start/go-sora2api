@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -15,6 +16,7 @@ import (
 // ListTasks GET /admin/tasks（viewer 角色只能看到自己 API Key 创建的任务）
 func (h *AdminHandler) ListTasks(c *gin.Context) {
 	status := c.Query("status")
+	taskType := c.Query("type")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
@@ -33,7 +35,7 @@ func (h *AdminHandler) ListTasks(c *gin.Context) {
 		}
 	}
 
-	tasks, total, err := h.taskStore.ListTasks(status, page, pageSize, apiKeyID)
+	tasks, total, err := h.taskStore.ListTasks(status, taskType, page, pageSize, apiKeyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -118,7 +120,11 @@ func (h *AdminHandler) DownloadTaskContent(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer body.Close()
+	defer func() {
+		if err := body.Close(); err != nil {
+			log.Printf("[admin_task] close body failed: %v", err)
+		}
+	}()
 
 	c.Header("Content-Type", contentType)
 	if contentLength > 0 {

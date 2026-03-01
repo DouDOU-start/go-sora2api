@@ -16,12 +16,19 @@ const statusFilters = [
   { label: '失败', value: 'failed' },
 ]
 
+const typeFilters = [
+  { label: '全部类型', value: '' },
+  { label: '视频', value: 'video' },
+  { label: '图片', value: 'image' },
+]
+
 export default function TaskList() {
   const navigate = useNavigate()
   const [tasks, setTasks] = useState<SoraTask[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('')
+  const [taskType, setTaskType] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 20
   const mountedRef = useRef(true)
@@ -31,7 +38,7 @@ export default function TaskList() {
     const load = async () => {
       setLoading(true)
       try {
-        const res = await listTasks({ status: status || undefined, page, page_size: pageSize })
+        const res = await listTasks({ status: status || undefined, type: taskType || undefined, page, page_size: pageSize })
         if (mountedRef.current) {
           setTasks(res.data.list ?? [])
           setTotal(res.data.total)
@@ -41,21 +48,21 @@ export default function TaskList() {
     }
     load()
     return () => { mountedRef.current = false }
-  }, [status, page])
+  }, [status, taskType, page])
 
   // 自动刷新
   useEffect(() => {
     if (status === '' || status === 'in_progress') {
       const timer = setInterval(async () => {
         try {
-          const res = await listTasks({ status: status || undefined, page, page_size: pageSize })
+          const res = await listTasks({ status: status || undefined, type: taskType || undefined, page, page_size: pageSize })
           setTasks(res.data.list ?? [])
           setTotal(res.data.total)
         } catch { /* ignore */ }
       }, 10000)
       return () => clearInterval(timer)
     }
-  }, [status, page])
+  }, [status, taskType, page])
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -90,6 +97,27 @@ export default function TaskList() {
                 background: status === f.value ? 'var(--bg-surface)' : 'transparent',
                 color: status === f.value ? 'var(--text-primary)' : 'var(--text-tertiary)',
                 boxShadow: status === f.value ? 'var(--shadow-sm)' : 'none',
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 类型筛选 */}
+        <div
+          className="flex items-center gap-0.5 p-1 rounded-xl self-start"
+          style={{ background: 'var(--bg-inset)' }}
+        >
+          {typeFilters.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => { setTaskType(f.value); setPage(1) }}
+              className="px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all cursor-pointer"
+              style={{
+                background: taskType === f.value ? 'var(--bg-surface)' : 'transparent',
+                color: taskType === f.value ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                boxShadow: taskType === f.value ? 'var(--shadow-sm)' : 'none',
               }}
             >
               {f.label}

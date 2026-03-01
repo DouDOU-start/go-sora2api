@@ -11,10 +11,48 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ListAPIKeys GET /admin/api-keys
+// ListAPIKeys GET /admin/api-keys（支持分页 + 关键词 + enabled 筛选）
 func (h *AdminHandler) ListAPIKeys(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	keyword := c.Query("keyword")
+	enabledStr := c.Query("enabled")
+	groupIDStr := c.Query("group_id")
+
+	query := h.db.Model(&model.SoraAPIKey{})
+	if keyword != "" {
+		query = query.Where("name ILIKE ?", "%"+keyword+"%")
+	}
+	switch enabledStr {
+	case "true":
+		query = query.Where("enabled = ?", true)
+	case "false":
+		query = query.Where("enabled = ?", false)
+	}
+	if groupIDStr == "null" {
+		query = query.Where("group_id IS NULL")
+	} else if groupIDStr != "" {
+		gid, err := strconv.ParseInt(groupIDStr, 10, 64)
+		if err == nil {
+			query = query.Where("group_id = ?", gid)
+		}
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var keys []model.SoraAPIKey
-	h.db.Order("id ASC").Find(&keys)
+	query.Order("id ASC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&keys)
 
 	// 构建分组 ID → 名称映射
 	groupIDs := make([]int64, 0)
@@ -42,11 +80,16 @@ func (h *AdminHandler) ListAPIKeys(c *gin.Context) {
 			item.GroupName = groupMap[*k.GroupID]
 		}
 		// 不暴露完整 Key
-		item.SoraAPIKey.Key = ""
+		item.Key = ""
 		resp = append(resp, item)
 	}
 
-	c.JSON(http.StatusOK, resp)
+	c.JSON(http.StatusOK, gin.H{
+		"list":      resp,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 // CreateAPIKey POST /admin/api-keys
@@ -66,7 +109,7 @@ func (h *AdminHandler) CreateAPIKey(c *gin.Context) {
 	apiKey := model.SoraAPIKey{
 		Name:    req.Name,
 		Key:     key,
-		GroupID:  req.GroupID,
+		GroupID: req.GroupID,
 		Enabled: true,
 	}
 	if req.Enabled != nil {
@@ -116,7 +159,7 @@ func (h *AdminHandler) UpdateAPIKey(c *gin.Context) {
 		SoraAPIKey: apiKey,
 		KeyHint:    model.MaskToken(apiKey.Key),
 	}
-	resp.SoraAPIKey.Key = ""
+	resp.Key = ""
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -144,6 +187,8 @@ func (h *AdminHandler) DeleteAPIKey(c *gin.Context) {
 // generateAPIKey 生成随机 API Key（sk- 前缀 + 32 字节十六进制）
 func generateAPIKey() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("failed to generate api key: %v", err))
+	}
 	return "sk-" + hex.EncodeToString(b)
 }

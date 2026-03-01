@@ -28,17 +28,56 @@ func (h *AdminHandler) buildAccountResponse(acc model.SoraAccount) model.AdminAc
 	return r
 }
 
-// ListAllAccounts GET /admin/accounts
+// ListAllAccounts GET /admin/accounts（支持分页 + 多条件筛选）
 func (h *AdminHandler) ListAllAccounts(c *gin.Context) {
-	var accounts []model.SoraAccount
-	h.db.Order("id ASC").Find(&accounts)
-
-	var resp []model.AdminAccountResponse
-	for _, acc := range accounts {
-		resp = append(resp, h.buildAccountResponse(acc))
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
 	}
 
-	c.JSON(http.StatusOK, resp)
+	status := c.Query("status")
+	groupIDStr := c.Query("group_id")
+	keyword := c.Query("keyword")
+
+	query := h.db.Model(&model.SoraAccount{})
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if groupIDStr != "" {
+		gid, err := strconv.ParseInt(groupIDStr, 10, 64)
+		if err == nil {
+			query = query.Where("group_id = ?", gid)
+		}
+	}
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		query = query.Where("email ILIKE ? OR name ILIKE ?", like, like)
+	}
+
+	var total int64
+	query.Count(&total)
+
+	var accounts []model.SoraAccount
+	query.Order("id ASC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&accounts)
+
+	list := make([]model.AdminAccountResponse, 0, len(accounts))
+	for _, acc := range accounts {
+		list = append(list, h.buildAccountResponse(acc))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"list":      list,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 // CreateAccountDirect POST /admin/accounts

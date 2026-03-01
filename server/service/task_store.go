@@ -41,13 +41,16 @@ func (ts *TaskStore) Get(taskID string) (*model.SoraTask, error) {
 }
 
 // ListTasks 分页查询任务（apiKeyID > 0 时按 API Key 过滤）
-func (ts *TaskStore) ListTasks(status string, page, pageSize int, apiKeyID int64) ([]model.SoraTask, int64, error) {
+func (ts *TaskStore) ListTasks(status, taskType string, page, pageSize int, apiKeyID int64) ([]model.SoraTask, int64, error) {
 	var tasks []model.SoraTask
 	var total int64
 
 	query := ts.db.Model(&model.SoraTask{})
 	if status != "" {
 		query = query.Where("status = ?", status)
+	}
+	if taskType != "" {
+		query = query.Where("type = ?", taskType)
 	}
 	if apiKeyID > 0 {
 		query = query.Where("api_key_id = ?", apiKeyID)
@@ -296,7 +299,9 @@ func (ts *TaskStore) DownloadVideo(ctx context.Context, task *model.SoraTask) (i
 
 	// 链接过期（403/404 等），清除缓存并重新获取
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[download] 关闭视频响应体失败: %v", err)
+		}
 		log.Printf("[download] 视频 %s 链接已过期（%d），重新获取", task.ID, resp.StatusCode)
 		ts.db.Model(&model.SoraTask{}).Where("id = ?", task.ID).Update("download_url", "")
 
@@ -309,7 +314,9 @@ func (ts *TaskStore) DownloadVideo(ctx context.Context, task *model.SoraTask) (i
 			return nil, 0, "", fmt.Errorf("下载视频失败: %w", err)
 		}
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			if err := resp.Body.Close(); err != nil {
+				log.Printf("[download] 关闭视频响应体失败: %v", err)
+			}
 			return nil, 0, "", fmt.Errorf("下载视频返回 %d", resp.StatusCode)
 		}
 	}
@@ -355,7 +362,9 @@ func (ts *TaskStore) DownloadImage(ctx context.Context, task *model.SoraTask) (i
 
 	// 链接过期，重新获取
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[download] 关闭图片响应体失败: %v", err)
+		}
 		log.Printf("[download] 图片 %s 链接已过期（%d），重新获取", task.ID, resp.StatusCode)
 
 		newURL, err := ts.fetchImageURL(ctx, task)
@@ -367,7 +376,9 @@ func (ts *TaskStore) DownloadImage(ctx context.Context, task *model.SoraTask) (i
 			return nil, 0, "", fmt.Errorf("下载图片失败: %w", err)
 		}
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			if err := resp.Body.Close(); err != nil {
+				log.Printf("[download] 关闭图片响应体失败: %v", err)
+			}
 			return nil, 0, "", fmt.Errorf("下载图片返回 %d", resp.StatusCode)
 		}
 	}

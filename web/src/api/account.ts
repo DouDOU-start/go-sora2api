@@ -1,8 +1,9 @@
 import client from './client'
 import type { SoraAccount, CreateAccountRequest, BatchImportRequest, BatchImportResult } from '../types/account'
+import type { PageResponse } from '../types/api'
 
-export function listAllAccounts() {
-  return client.get<SoraAccount[]>('/admin/accounts')
+export function listAccounts(params?: { page?: number; page_size?: number; status?: string; group_id?: number | null; keyword?: string }) {
+  return client.get<PageResponse<SoraAccount>>('/admin/accounts', { params })
 }
 
 export function createAccount(data: CreateAccountRequest) {
