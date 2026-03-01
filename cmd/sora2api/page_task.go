@@ -30,17 +30,13 @@ type taskModel struct {
 	params      map[string]string
 
 	steps       []taskStep
-	currentStep int
 	spinner     spinner.Model
 	progress    progress.Model
 	progressPct float64
 	statusText  string
 
-	taskID       string
-	startTime    time.Time
-	maxProgress  int
-	everFound    bool
-	notFoundCnt  int
+	startTime   time.Time
+	maxProgress int
 
 	done      bool
 	resultURL string
@@ -169,7 +165,7 @@ func (m taskModel) View() string {
 
 	// 步骤列表
 	if len(m.steps) == 0 {
-		card.WriteString(fmt.Sprintf("%s 准备中...", m.spinner.View()))
+		fmt.Fprintf(&card, "%s 准备中...", m.spinner.View())
 	}
 	for _, step := range m.steps {
 		if step.err != nil {
@@ -177,7 +173,7 @@ func (m taskModel) View() string {
 		} else if step.done {
 			card.WriteString(successStyle.Render("✓ " + step.name))
 		} else {
-			card.WriteString(fmt.Sprintf("%s %s", m.spinner.View(), step.name))
+			fmt.Fprintf(&card, "%s %s", m.spinner.View(), step.name)
 		}
 		card.WriteString("\n")
 	}
@@ -644,10 +640,6 @@ func (m taskModel) charCreateStep(msg charCreateStepMsg) tea.Cmd {
 			func() tea.Msg {
 				ctx := context.Background()
 				_ = c.SetCharacterPublic(ctx, at, msg.cameoID)
-				displayName := m.params["display_name"]
-				if displayName == "" {
-					displayName = "My Character"
-				}
 				return charCreateStepMsg{step: 6, cameoID: msg.cameoID, characterID: msg.characterID}
 			},
 		)

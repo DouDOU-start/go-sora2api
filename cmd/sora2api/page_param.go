@@ -12,13 +12,13 @@ import (
 
 // paramField 表单字段
 type paramField struct {
-	label    string
-	key      string
-	kind     string // "text", "select"
-	options  []string
+	label        string
+	key          string
+	kind         string // "text", "select"
+	options      []string
 	optionLabels []string // 显示文字
-	selected int
-	input    textinput.Model
+	selected     int
+	input        textinput.Model
 }
 
 type paramModel struct {
@@ -272,7 +272,7 @@ func (m paramModel) View() string {
 
 		switch f.kind {
 		case "text":
-			form.WriteString(fmt.Sprintf("    %s\n", f.input.View()))
+			fmt.Fprintf(&form, "    %s\n", f.input.View())
 		case "select":
 			form.WriteString("    ")
 			for j, label := range f.optionLabels {

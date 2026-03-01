@@ -17,11 +17,6 @@ var (
 			Foreground(colorPrimary).
 			MarginBottom(1)
 
-	// 状态栏
-	statusBarStyle = lipgloss.NewStyle().
-			Foreground(colorMuted).
-			PaddingLeft(2)
-
 	// 菜单分组标题
 	groupTitleStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -68,11 +63,6 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorBorder).
 			Padding(1, 2)
-
-	// URL 链接样式
-	urlStyle = lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Underline(true)
 
 	// 账号信息卡片
 	accountCardStyle = lipgloss.NewStyle().

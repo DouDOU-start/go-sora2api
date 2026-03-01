@@ -166,7 +166,7 @@ func (m menuModel) View() string {
 
 			name := style.Render(fmt.Sprintf("%s%-10s", cursor, item.name))
 			desc := menuDescStyle.Render(item.desc)
-			b.WriteString(fmt.Sprintf("%s %s\n", name, desc))
+			fmt.Fprintf(&b, "%s %s\n", name, desc)
 			globalIdx++
 		}
 	}
@@ -182,7 +182,7 @@ func (m menuModel) renderAccountCard() string {
 	var b strings.Builder
 
 	if m.accountLoading {
-		b.WriteString(fmt.Sprintf("  %s 正在获取账号信息...", m.accountSpinner.View()))
+		fmt.Fprintf(&b, "  %s 正在获取账号信息...", m.accountSpinner.View())
 		return b.String()
 	}
 

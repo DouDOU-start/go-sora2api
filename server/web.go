@@ -42,7 +42,7 @@ func ServeWebUI(r *gin.Engine) {
 		// 尝试提供静态文件
 		if len(path) > 1 {
 			if f, err := distFS.Open(path[1:]); err == nil {
-				f.Close()
+				_ = f.Close()
 				fileServer.ServeHTTP(c.Writer, c.Request)
 				return
 			}

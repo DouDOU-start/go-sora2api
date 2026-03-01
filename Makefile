@@ -88,10 +88,17 @@ fmt:  ## 格式化代码
 vet:  ## 静态分析
 	go vet ./...
 
-lint: vet  ## 代码检查（vet + golangci-lint）
-	@command -v golangci-lint >/dev/null 2>&1 \
-		&& golangci-lint run ./... \
-		|| echo "==> 跳过 golangci-lint（未安装: https://golangci-lint.run/welcome/install/）"
+GOLANGCI_LINT := $(shell command -v golangci-lint 2>/dev/null \
+	|| command -v /opt/homebrew/bin/golangci-lint 2>/dev/null \
+	|| echo "$(shell go env GOPATH)/bin/golangci-lint")
+
+lint: vet  ## 代码检查（vet + golangci-lint，未安装时自动安装）
+	@if ! command -v golangci-lint >/dev/null 2>&1 && [ ! -f "$(GOLANGCI_LINT)" ]; then \
+		echo "==> 安装 golangci-lint..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
+			| sh -s -- -b "$(shell go env GOPATH)/bin" latest; \
+	fi
+	@$(GOLANGCI_LINT) run ./...
 
 lint-web:  ## 前端代码检查
 	cd web && npm run lint

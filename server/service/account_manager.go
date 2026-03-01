@@ -169,7 +169,7 @@ func (am *AccountManager) syncAccountCredit(ctx context.Context, acc *model.Sora
 
 	balance, err := client.GetCreditBalance(ctx, acc.AccessToken)
 	if err != nil {
-		log.Printf("[credit_sync] 账号 %d(%s) 配额查询失败: %v", acc.ID, acc.Name, err)
+		log.Printf("[credit_sync] 账号 %s 配额查询失败: %v", acc.Email, err)
 		return
 	}
 
@@ -203,7 +203,7 @@ func (am *AccountManager) syncAccountCredit(ctx context.Context, acc *model.Sora
 	} else if acc.Status == model.AccountStatusQuotaExhausted && balance.RemainingCount != 0 {
 		updates["status"] = model.AccountStatusActive
 		updates["last_error"] = ""
-		log.Printf("[credit_sync] 账号 %d(%s) 额度已恢复，重新启用", acc.ID, acc.Name)
+		log.Printf("[credit_sync] 账号 %s 额度已恢复，重新启用", acc.Email)
 	}
 
 	am.db.Model(&model.SoraAccount{}).Where("id = ?", acc.ID).Updates(updates)

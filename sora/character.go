@@ -43,7 +43,9 @@ func (c *Client) UploadCharacterVideo(ctx context.Context, accessToken string, v
 	if err := writer.WriteField("timestamps", "0,3"); err != nil {
 		return "", err
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
 
 	resp, err := c.doPostMultipart(ctx, soraBaseURL+"/characters/upload", headers, &buf, writer.FormDataContentType())
 	if err != nil {
@@ -168,7 +170,9 @@ func (c *Client) UploadCharacterImage(ctx context.Context, accessToken string, i
 	if err := writer.WriteField("use_case", "profile"); err != nil {
 		return "", err
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
 
 	resp, err := c.doPostMultipart(ctx, soraBaseURL+"/project_y/file/upload", headers, &buf, writer.FormDataContentType())
 	if err != nil {

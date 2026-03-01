@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net/url"
 	"path"
@@ -87,7 +88,11 @@ func (c *Client) TestConnectivity(ctx context.Context, targetURL string) (status
 	if err != nil {
 		return 0, fmt.Errorf("请求失败: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[sora] close response body failed: %v", err)
+		}
+	}()
 	return resp.StatusCode, nil
 }
 

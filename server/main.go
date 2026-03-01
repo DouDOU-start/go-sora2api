@@ -155,7 +155,9 @@ func migrateAPIKeys(db *gorm.DB) {
 		// 尝试从旧的 sora_settings 表读取
 		var setting model.SoraSetting
 		if err := db.Where("key = ?", "api_keys").First(&setting).Error; err == nil {
-			json.Unmarshal([]byte(setting.Value), &keys)
+			if err := json.Unmarshal([]byte(setting.Value), &keys); err != nil {
+				log.Printf("[main] 解析旧 api_keys 配置失败: %v", err)
+			}
 		}
 	}
 
@@ -227,7 +229,11 @@ func createDatabase(dsn string) error {
 	if err != nil {
 		return fmt.Errorf("连接 postgres 库失败: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("[db] 关闭 postgres 连接失败: %v", err)
+		}
+	}()
 
 	// 创建目标数据库（库名不支持参数化，此处值来自配置文件而非用户输入）
 	_, err = conn.Exec(fmt.Sprintf("CREATE DATABASE %q", dbName))

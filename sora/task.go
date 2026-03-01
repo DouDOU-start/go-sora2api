@@ -46,7 +46,9 @@ func (c *Client) UploadImage(ctx context.Context, accessToken string, imageData 
 	if err := writer.WriteField("file_name", filename); err != nil {
 		return "", err
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
 
 	resp, err := c.doPostMultipart(ctx, soraBaseURL+"/uploads", headers, &buf, writer.FormDataContentType())
 	if err != nil {

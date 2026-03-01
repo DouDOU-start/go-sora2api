@@ -35,9 +35,9 @@ func FormatStoryboardPrompt(prompt string) string {
 	for i, match := range matches {
 		duration := match[1]
 		scene := strings.TrimSpace(match[2])
-		b.WriteString(fmt.Sprintf("Shot %d:\n", i+1))
-		b.WriteString(fmt.Sprintf("duration: %ssec\n", duration))
-		b.WriteString(fmt.Sprintf("Scene: %s\n\n", scene))
+		fmt.Fprintf(&b, "Shot %d:\n", i+1)
+		fmt.Fprintf(&b, "duration: %ssec\n", duration)
+		fmt.Fprintf(&b, "Scene: %s\n\n", scene)
 	}
 
 	if instructions != "" {

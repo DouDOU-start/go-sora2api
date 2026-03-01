@@ -221,7 +221,11 @@ func (h *ImageHandler) DownloadImage(c *gin.Context) {
 		})
 		return
 	}
-	defer body.Close()
+	defer func() {
+		if err := body.Close(); err != nil {
+			log.Printf("[image] close body failed: %v", err)
+		}
+	}()
 
 	c.Header("Content-Type", contentType)
 	if contentLength > 0 {

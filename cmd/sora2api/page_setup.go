@@ -108,7 +108,7 @@ func (m setupModel) View() string {
 		form.WriteString(labelStyle.Render("  Access Token"))
 	}
 	form.WriteString("\n")
-	form.WriteString(fmt.Sprintf("  %s\n", m.tokenInput.View()))
+	fmt.Fprintf(&form, "  %s\n", m.tokenInput.View())
 
 	// 代理输入
 	if m.focusIndex == 1 {
@@ -117,7 +117,7 @@ func (m setupModel) View() string {
 		form.WriteString(labelStyle.Render("\n  代理地址 (可选)"))
 	}
 	form.WriteString("\n")
-	form.WriteString(fmt.Sprintf("  %s", m.proxyInput.View()))
+	fmt.Fprintf(&form, "  %s", m.proxyInput.View())
 
 	b.WriteString(boxStyle.Render(form.String()))
 	b.WriteString("\n")

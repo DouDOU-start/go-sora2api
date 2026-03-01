@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"sync"
 
@@ -123,7 +124,11 @@ func (c *Client) doPost(ctx context.Context, url string, headers map[string]stri
 	if err != nil {
 		return nil, fmt.Errorf("请求失败: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[sora] close response body failed: %v", err)
+		}
+	}()
 
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -156,7 +161,11 @@ func (c *Client) doGet(ctx context.Context, url string, headers map[string]strin
 	if err != nil {
 		return nil, fmt.Errorf("请求失败: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[sora] close response body failed: %v", err)
+		}
+	}()
 
 	buf, err := readAll(resp.Body)
 	if err != nil {
@@ -190,7 +199,11 @@ func (c *Client) doPostMultipart(ctx context.Context, url string, headers map[st
 	if err != nil {
 		return nil, fmt.Errorf("请求失败: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[sora] close response body failed: %v", err)
+		}
+	}()
 
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -223,7 +236,11 @@ func (c *Client) doDelete(ctx context.Context, url string, headers map[string]st
 	if err != nil {
 		return fmt.Errorf("请求失败: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[sora] close response body failed: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != 200 && resp.StatusCode != 204 {
 		buf, _ := readAll(resp.Body)
