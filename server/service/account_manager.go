@@ -77,7 +77,7 @@ func (am *AccountManager) refreshAllTokens(ctx context.Context) {
 		acc := &accounts[i]
 		if err := am.refreshAccountToken(ctx, acc); err != nil {
 			fail++
-			log.Printf("[token_refresh] 账号 %d(%s) 刷新失败: %v", acc.ID, acc.Name, err)
+			log.Printf("[token_refresh] 账号 %s 刷新失败: %v", acc.Email, err)
 		} else {
 			success++
 		}
@@ -251,7 +251,7 @@ func (am *AccountManager) syncAccountSubscription(ctx context.Context, acc *mode
 
 	info, err := client.GetSubscriptionInfo(ctx, acc.AccessToken)
 	if err != nil {
-		log.Printf("[sub_sync] 账号 %d(%s) 订阅查询失败: %v", acc.ID, acc.Name, err)
+		log.Printf("[sub_sync] 账号 %s 订阅查询失败: %v", acc.Email, err)
 		return
 	}
 
@@ -262,7 +262,7 @@ func (am *AccountManager) syncAccountSubscription(ctx context.Context, acc *mode
 		expiresAt := time.Unix(info.EndTs, 0)
 		updates["plan_expires_at"] = expiresAt
 		if expiresAt.Before(time.Now()) {
-			log.Printf("[sub_sync] ⚠ 账号 %d(%s) 订阅已过期: %s（%s）", acc.ID, acc.Name, info.PlanTitle, expiresAt.Format("2006-01-02"))
+			log.Printf("[sub_sync] ⚠ 账号 %s 订阅已过期: %s（%s）", acc.Email, info.PlanTitle, expiresAt.Format("2006-01-02"))
 		}
 	}
 
