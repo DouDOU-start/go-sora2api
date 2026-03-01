@@ -105,9 +105,9 @@ func (ts *TaskStore) StartPolling(task *model.SoraTask, account *model.SoraAccou
 			case <-ticker.C:
 				switch task.Type {
 				case "image":
-					ts.pollImageTask(ctx, client, account.AccessToken, task, startTime)
+					ts.pollImageTask(ctx, client, account.AccessToken, task, startTime, account.Email)
 				default:
-					ts.pollVideoTask(ctx, client, account.AccessToken, task, startTime, &maxProgress)
+					ts.pollVideoTask(ctx, client, account.AccessToken, task, startTime, &maxProgress, account.Email)
 				}
 
 				// 检查任务是否已完成
@@ -123,7 +123,7 @@ func (ts *TaskStore) StartPolling(task *model.SoraTask, account *model.SoraAccou
 }
 
 // pollVideoTask 轮询视频任务
-func (ts *TaskStore) pollVideoTask(ctx context.Context, client *sora.Client, at string, task *model.SoraTask, startTime time.Time, maxProgress *int) {
+func (ts *TaskStore) pollVideoTask(ctx context.Context, client *sora.Client, at string, task *model.SoraTask, startTime time.Time, maxProgress *int, email string) {
 	result := client.QueryVideoTaskOnce(ctx, at, task.SoraTaskID, startTime, *maxProgress)
 	if result.Err != nil {
 		log.Printf("[poll] 视频任务 %s 查询失败: %v", task.ID, result.Err)
@@ -150,13 +150,13 @@ func (ts *TaskStore) pollVideoTask(ctx context.Context, client *sora.Client, at 
 		creditCtx, creditCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		go func() {
 			defer creditCancel()
-			ts.syncAccountCredit(creditCtx, client, at, task.AccountID)
+			ts.syncAccountCredit(creditCtx, client, at, task.AccountID, email)
 		}()
 	}
 }
 
 // pollImageTask 轮询图片任务
-func (ts *TaskStore) pollImageTask(ctx context.Context, client *sora.Client, at string, task *model.SoraTask, startTime time.Time) {
+func (ts *TaskStore) pollImageTask(ctx context.Context, client *sora.Client, at string, task *model.SoraTask, startTime time.Time, email string) {
 	result := client.QueryImageTaskOnce(ctx, at, task.SoraTaskID, startTime)
 	if result.Err != nil {
 		log.Printf("[poll] 图片任务 %s 查询失败: %v", task.ID, result.Err)
@@ -173,7 +173,7 @@ func (ts *TaskStore) pollImageTask(ctx context.Context, client *sora.Client, at 
 		creditCtx, creditCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		go func() {
 			defer creditCancel()
-			ts.syncAccountCredit(creditCtx, client, at, task.AccountID)
+			ts.syncAccountCredit(creditCtx, client, at, task.AccountID, email)
 		}()
 	}
 }
@@ -208,10 +208,10 @@ func (ts *TaskStore) failTask(taskID, errMsg string) {
 }
 
 // syncAccountCredit 同步账号配额
-func (ts *TaskStore) syncAccountCredit(ctx context.Context, client *sora.Client, at string, accountID int64) {
+func (ts *TaskStore) syncAccountCredit(ctx context.Context, client *sora.Client, at string, accountID int64, email string) {
 	balance, err := client.GetCreditBalance(ctx, at)
 	if err != nil {
-		log.Printf("[poll] 同步账号 %d 配额失败: %v", accountID, err)
+		log.Printf("[poll] 同步账号 %s 配额失败: %v", email, err)
 		return
 	}
 
