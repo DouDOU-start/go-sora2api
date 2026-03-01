@@ -53,7 +53,8 @@ func (h *AdminHandler) TriggerUpgrade(c *gin.Context) {
 		return
 	}
 
-	cmd := exec.Command("sora2api", "upgrade")
+	// 升级脚本需要 root 权限（systemctl stop/start），通过 sudoers 规则免密执行
+	cmd := exec.Command("sudo", "sora2api", "upgrade")
 	if err := cmd.Start(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("启动升级失败: %v", err)})
 		return

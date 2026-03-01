@@ -300,6 +300,15 @@ install_cli() {
     print_success "管理命令已安装: sora2api"
 }
 
+# 配置 sudoers：允许 sora2api 用户免密执行升级命令
+install_sudoers() {
+    local sudoers_file="/etc/sudoers.d/sora2api"
+    print_info "正在配置 sudoers 权限..."
+    echo "${SERVICE_USER} ALL=(ALL) NOPASSWD: ${CLI_LINK} upgrade, ${CLI_LINK} upgrade *" > "$sudoers_file"
+    chmod 440 "$sudoers_file"
+    print_success "sudoers 规则已写入: $sudoers_file"
+}
+
 configure_server() {
     if ! is_interactive; then
         print_info "使用默认配置（非交互模式）"
@@ -553,8 +562,9 @@ upgrade() {
     download_and_extract
     chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/sora2api-server"
 
-    # 同时更新管理脚本
+    # 同时更新管理脚本和 sudoers
     install_cli
+    install_sudoers
 
     print_info "正在启动服务..."
     systemctl start sora2api
@@ -734,12 +744,12 @@ main() {
                 else
                     configure_server
                     LATEST_VERSION=$(validate_version "$target_version")
-                    download_and_extract; create_user; setup_directories; install_service; install_cli
+                    download_and_extract; create_user; setup_directories; install_service; install_cli; install_sudoers
                     get_public_ip; start_and_enable; print_completion
                 fi
             else
                 configure_server; get_latest_version
-                download_and_extract; create_user; setup_directories; install_service; install_cli
+                download_and_extract; create_user; setup_directories; install_service; install_cli; install_sudoers
                 get_public_ip; start_and_enable; print_completion
             fi
             ;;
@@ -791,12 +801,12 @@ main() {
                 else
                     configure_server
                     LATEST_VERSION=$(validate_version "$target_version")
-                    download_and_extract; create_user; setup_directories; install_service; install_cli
+                    download_and_extract; create_user; setup_directories; install_service; install_cli; install_sudoers
                     get_public_ip; start_and_enable; print_completion
                 fi
             else
                 configure_server; get_latest_version
-                download_and_extract; create_user; setup_directories; install_service; install_cli
+                download_and_extract; create_user; setup_directories; install_service; install_cli; install_sudoers
                 get_public_ip; start_and_enable; print_completion
             fi
             ;;
