@@ -19,11 +19,12 @@ type AdminHandler struct {
 	manager   *service.AccountManager
 	taskStore *service.TaskStore
 	settings  *service.SettingsStore
+	version   string
 }
 
 // NewAdminHandler 创建管理端点
-func NewAdminHandler(db *gorm.DB, manager *service.AccountManager, taskStore *service.TaskStore, settings *service.SettingsStore) *AdminHandler {
-	return &AdminHandler{db: db, manager: manager, taskStore: taskStore, settings: settings}
+func NewAdminHandler(db *gorm.DB, manager *service.AccountManager, taskStore *service.TaskStore, settings *service.SettingsStore, version string) *AdminHandler {
+	return &AdminHandler{db: db, manager: manager, taskStore: taskStore, settings: settings, version: version}
 }
 
 // GetSettings GET /admin/settings — 获取所有设置
@@ -76,9 +77,7 @@ func (h *AdminHandler) TestProxy(c *gin.Context) {
 		return
 	}
 
-	proxyURL := sora.ParseProxy(req.ProxyURL)
-
-	client, err := sora.New(proxyURL)
+	client, err := sora.New(req.ProxyURL)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "error": fmt.Sprintf("创建客户端失败: %v", err)})
 		return

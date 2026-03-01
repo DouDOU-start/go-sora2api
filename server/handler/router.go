@@ -19,6 +19,7 @@ type RouterConfig struct {
 	JWTSecret string
 	AdminUser string
 	AdminPass string
+	Version   string
 }
 
 // SetupRouter 注册所有路由
@@ -73,7 +74,7 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 	}
 
 	// 管理端点（JWT 认证）
-	adminHandler := NewAdminHandler(cfg.DB, cfg.Manager, cfg.TaskStore, cfg.Settings)
+	adminHandler := NewAdminHandler(cfg.DB, cfg.Manager, cfg.TaskStore, cfg.Settings, cfg.Version)
 	admin := r.Group("/admin", AdminAuthMiddleware(cfg.JWTSecret))
 	{
 		// ── 所有已登录用户（admin + viewer）可访问 ──
@@ -100,6 +101,10 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 		adminOnly.GET("/settings", adminHandler.GetSettings)
 		adminOnly.PUT("/settings", adminHandler.UpdateSettings)
 		adminOnly.POST("/proxy-test", adminHandler.TestProxy)
+
+		// 版本管理
+		adminOnly.GET("/version", adminHandler.GetVersion)
+		adminOnly.POST("/upgrade", adminHandler.TriggerUpgrade)
 
 		// API Key 管理
 		adminOnly.GET("/api-keys", adminHandler.ListAPIKeys)

@@ -105,6 +105,7 @@ func main() {
 		JWTSecret: cfg.Server.JWTSecret,
 		AdminUser: cfg.Server.AdminUser,
 		AdminPass: cfg.Server.AdminPassword,
+		Version:   version,
 	})
 
 	// 前端静态文件（SPA）

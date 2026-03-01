@@ -21,3 +21,13 @@ export interface ProxyTestResult {
 
 export const testProxy = (proxyUrl: string) =>
   client.post<ProxyTestResult>('/admin/proxy-test', { proxy_url: proxyUrl })
+
+export interface VersionInfo {
+  current: string
+  latest: string
+  has_update: boolean
+}
+
+export const getVersion = () => client.get<VersionInfo>('/admin/version')
+
+export const triggerUpgrade = () => client.post<{ message?: string; error?: string }>('/admin/upgrade')

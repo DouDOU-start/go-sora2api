@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateSettings, testProxy, type ProxyTestResult } from '../api/settings'
+import { getSettings, updateSettings, testProxy, getVersion, triggerUpgrade, type ProxyTestResult, type VersionInfo } from '../api/settings'
 import GlassCard from '../components/ui/GlassCard'
 import LoadingState from '../components/ui/LoadingState'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -30,9 +30,12 @@ export default function Settings() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<ProxyTestResult | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
+  const [upgrading, setUpgrading] = useState(false)
 
   useEffect(() => {
     loadSettings()
+    loadVersion()
   }, [])
 
   // 消息自动消失
@@ -42,6 +45,15 @@ export default function Settings() {
       return () => clearTimeout(t)
     }
   }, [message])
+
+  const loadVersion = async () => {
+    try {
+      const res = await getVersion()
+      setVersionInfo(res.data)
+    } catch {
+      // 忽略版本获取失败
+    }
+  }
 
   const loadSettings = async () => {
     try {
@@ -74,8 +86,20 @@ export default function Settings() {
     setSaving(false)
   }
 
+  const handleUpgrade = async () => {
+    setUpgrading(true)
+    setMessage(null)
+    try {
+      const res = await triggerUpgrade()
+      setMessage({ type: 'success', text: res.data.message || '升级已启动' })
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setMessage({ type: 'error', text: msg || '升级失败，请检查日志' })
+    }
+    setUpgrading(false)
+  }
+
   const handleTestProxy = async () => {
-    setTesting(true)
     setTestResult(null)
     try {
       const res = await testProxy(proxyUrl)
@@ -105,8 +129,74 @@ export default function Settings() {
       </motion.div>
 
       <div className="space-y-4">
+        {/* 版本信息 */}
+        {versionInfo && (
+          <GlassCard delay={0} className="overflow-hidden">
+            <div className="p-5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+                  style={{ background: 'var(--warning-soft, rgba(234,179,8,0.1))' }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning, #ca8a04)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="16 3 21 3 21 8" />
+                    <line x1="4" y1="20" x2="21" y2="3" />
+                    <polyline points="21 16 21 21 16 21" />
+                    <line x1="15" y1="15" x2="21" y2="21" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>版本信息</h3>
+                    {versionInfo.has_update && (
+                      <span
+                        className="text-xs font-medium px-2 py-0.5 rounded-full"
+                        style={{ background: 'var(--success-soft)', color: 'var(--success)' }}
+                      >
+                        有新版本
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 mt-2 flex-wrap">
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      当前版本：<span className="font-mono font-medium" style={{ color: 'var(--text-primary)' }}>{versionInfo.current}</span>
+                    </span>
+                    {versionInfo.latest && (
+                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        最新版本：<span className="font-mono font-medium" style={{ color: versionInfo.has_update ? 'var(--success)' : 'var(--text-primary)' }}>{versionInfo.latest}</span>
+                      </span>
+                    )}
+                  </div>
+                  {versionInfo.has_update && (
+                    <div className="mt-3">
+                      <button
+                        onClick={handleUpgrade}
+                        disabled={upgrading}
+                        className="px-4 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer text-white disabled:opacity-50"
+                        style={{ background: 'var(--accent)' }}
+                        onMouseEnter={(e) => { if (!upgrading) e.currentTarget.style.background = 'var(--accent-hover)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)' }}
+                      >
+                        {upgrading ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <svg className="w-3 h-3" style={{ animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            升级中...
+                          </span>
+                        ) : `升级到 ${versionInfo.latest}`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </GlassCard>
+        )}
+
         {/* 代理地址 */}
-        <GlassCard delay={0} className="overflow-hidden">
+        <GlassCard delay={1} className="overflow-hidden">
           <div className="p-5 sm:p-6">
             <div className="flex items-start gap-3 mb-4">
               <div
@@ -179,7 +269,7 @@ export default function Settings() {
         </GlassCard>
 
         {/* 同步间隔 */}
-        <GlassCard delay={1} className="overflow-hidden">
+        <GlassCard delay={2} className="overflow-hidden">
           <div className="p-5 sm:p-6">
             <div className="flex items-start gap-3 mb-4">
               <div
