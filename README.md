@@ -222,6 +222,14 @@ proxy := sora.ParseProxy("ip:port:user:pass")
 | model | `sy_8`(标准) / `sy_ore`(Pro) |
 | size | `small`(标准) / `large`(高清, 仅Pro) |
 
+### 图片参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| width | 图片宽度（像素） | 1792 |
+| height | 图片高度（像素） | 1024 |
+| input_reference | 参考图片，URL 或 base64 data URI（图生图时传入） | — |
+
 ## CLI 工具
 
 基于 [Bubble Tea](https://github.com/charmbracelet/bubbletea) 的交互式 TUI 工具：
