@@ -60,6 +60,8 @@ func New(proxyURL string) (*Client, error) {
 	}
 
 	if proxyURL != "" {
+		// 确保 %s 占位符被替换，避免 url.Parse 因非法转义序列报错
+		proxyURL = ParseProxy(proxyURL)
 		options = append(options, tls_client.WithProxyUrl(proxyURL))
 	}
 
