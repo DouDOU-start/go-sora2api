@@ -190,6 +190,29 @@ type AdminAPIKeyResponse struct {
 	GroupName string `json:"group_name,omitempty"` // 所属分组名称
 }
 
+// AdminBatchImportRequest 批量导入账号请求
+type AdminBatchImportRequest struct {
+	Tokens  []string `json:"tokens" binding:"required"`
+	GroupID *int64   `json:"group_id"`
+}
+
+// AdminBatchImportItemResult 单个 Token 导入结果
+type AdminBatchImportItemResult struct {
+	Token  string `json:"token"`           // Token 掩码
+	Action string `json:"action"`          // "created" / "updated" / "failed"
+	Email  string `json:"email,omitempty"` // 识别出的邮箱
+	Error  string `json:"error,omitempty"` // 错误信息
+}
+
+// AdminBatchImportResult 批量导入汇总结果
+type AdminBatchImportResult struct {
+	Total   int                          `json:"total"`
+	Created int                          `json:"created"`
+	Updated int                          `json:"updated"`
+	Failed  int                          `json:"failed"`
+	Details []AdminBatchImportItemResult `json:"details"`
+}
+
 // AdminCharacterResponse 角色管理响应（含关联账号邮箱）
 type AdminCharacterResponse struct {
 	SoraCharacter

@@ -65,3 +65,23 @@ export interface CreateAPIKeyRequest {
   group_id?: number | null
   enabled?: boolean
 }
+
+export interface BatchImportRequest {
+  tokens: string[]
+  group_id?: number | null
+}
+
+export interface BatchImportItemResult {
+  token: string
+  action: 'created' | 'updated' | 'failed'
+  email?: string
+  error?: string
+}
+
+export interface BatchImportResult {
+  total: number
+  created: number
+  updated: number
+  failed: number
+  details: BatchImportItemResult[]
+}

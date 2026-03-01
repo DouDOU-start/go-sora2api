@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { listAllAccounts, createAccount, updateAccount, deleteAccount, refreshAccountToken, getAccountStatus, revealAccountTokens } from '../api/account'
+import { listAllAccounts, createAccount, updateAccount, deleteAccount, refreshAccountToken, getAccountStatus, revealAccountTokens, batchImportAccounts } from '../api/account'
 import { listGroups } from '../api/group'
-import type { SoraAccount, CreateAccountRequest, SoraAccountGroup } from '../types/account'
+import type { SoraAccount, CreateAccountRequest, SoraAccountGroup, BatchImportResult } from '../types/account'
 import GlassCard from '../components/ui/GlassCard'
 import StatusBadge from '../components/ui/StatusBadge'
 import LoadingState from '../components/ui/LoadingState'
@@ -48,6 +48,12 @@ export default function AccountList() {
   const [confirmState, setConfirmState] = useState<{ open: boolean; id: number }>({ open: false, id: 0 })
   const [revealedTokens, setRevealedTokens] = useState<Record<number, { access_token: string; refresh_token: string }>>({})
 
+  // 批量导入状态
+  const [showBatch, setShowBatch] = useState(false)
+  const [batchTokens, setBatchTokens] = useState('')
+  const [batchGroupId, setBatchGroupId] = useState<number | null>(null)
+  const [batchImporting, setBatchImporting] = useState(false)
+  const [batchResult, setBatchResult] = useState<BatchImportResult | null>(null)
   const reload = useCallback(() => setRefreshKey((k) => k + 1), [])
 
   const closeForm = () => {
@@ -166,6 +172,30 @@ export default function AccountList() {
     setActionLoading(prev => ({ ...prev, [`sync-${id}`]: false }))
   }
 
+  const handleBatchImport = async () => {
+    const tokens = batchTokens.split('\n').map(t => t.trim()).filter(Boolean)
+    if (tokens.length === 0) {
+      toast.error('请输入至少一个 Token')
+      return
+    }
+    setBatchImporting(true)
+    try {
+      const res = await batchImportAccounts({ tokens, group_id: batchGroupId })
+      setBatchResult(res.data)
+      reload()
+    } catch (err) {
+      toast.error(getErrorMessage(err, '批量导入失败'))
+    }
+    setBatchImporting(false)
+  }
+
+  const closeBatch = () => {
+    setShowBatch(false)
+    setBatchTokens('')
+    setBatchGroupId(null)
+    setBatchResult(null)
+  }
+
   if (loading) return <LoadingState />
 
   return (
@@ -184,15 +214,26 @@ export default function AccountList() {
             共 {accounts.length} 个账号
           </p>
         </div>
-        <button
-          onClick={() => { setEditId(null); setForm({ ...emptyForm }); setShowForm(true) }}
-          className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all cursor-pointer"
-          style={{ background: 'var(--accent)' }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-hover)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
-        >
-          + 添加账号
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setBatchResult(null); setShowBatch(true) }}
+            className="px-4 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-inset)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--bg-elevated)'}
+          >
+            批量导入
+          </button>
+          <button
+            onClick={() => { setEditId(null); setForm({ ...emptyForm }); setShowForm(true) }}
+            className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-all cursor-pointer"
+            style={{ background: 'var(--accent)' }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
+          >
+            + 添加账号
+          </button>
+        </div>
       </motion.div>
 
       {/* 账号列表 */}
@@ -419,6 +460,133 @@ export default function AccountList() {
             </button>
           </div>
         </form>
+      </FormModal>
+
+      {/* 批量导入弹窗 */}
+      <FormModal open={showBatch} title="批量导入账号" onClose={closeBatch}>
+        {batchResult ? (
+          <div className="space-y-4">
+            {/* 汇总 */}
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="py-3 rounded-xl" style={{ background: 'var(--success-soft)' }}>
+                <div className="text-2xl font-bold" style={{ color: 'var(--success)' }}>{batchResult.created}</div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>新建</div>
+              </div>
+              <div className="py-3 rounded-xl" style={{ background: 'var(--info-soft)' }}>
+                <div className="text-2xl font-bold" style={{ color: 'var(--info)' }}>{batchResult.updated}</div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>更新</div>
+              </div>
+              <div className="py-3 rounded-xl" style={{ background: batchResult.failed > 0 ? 'var(--danger-soft)' : 'var(--bg-inset)' }}>
+                <div className="text-2xl font-bold" style={{ color: batchResult.failed > 0 ? 'var(--danger)' : 'var(--text-tertiary)' }}>{batchResult.failed}</div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>失败</div>
+              </div>
+            </div>
+            {/* 明细 */}
+            <div className="max-h-60 overflow-y-auto rounded-xl" style={{ border: '1px solid var(--border-default)' }}>
+              {batchResult.details.map((item, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-3 px-3 py-2.5 text-xs"
+                  style={{
+                    borderBottom: i < batchResult.details.length - 1 ? '1px solid var(--border-default)' : undefined,
+                    background: i % 2 === 0 ? 'transparent' : 'var(--bg-inset)',
+                  }}
+                >
+                  <span
+                    className="px-1.5 py-0.5 rounded font-medium flex-shrink-0"
+                    style={{
+                      background: item.action === 'created' ? 'var(--success-soft)' : item.action === 'updated' ? 'var(--info-soft)' : 'var(--danger-soft)',
+                      color: item.action === 'created' ? 'var(--success)' : item.action === 'updated' ? 'var(--info)' : 'var(--danger)',
+                    }}
+                  >
+                    {item.action === 'created' ? '新建' : item.action === 'updated' ? '更新' : '失败'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <code className="block truncate" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>{item.token}</code>
+                    {item.email && <span style={{ color: 'var(--text-tertiary)' }}>{item.email}</span>}
+                    {item.error && <span style={{ color: 'var(--danger)' }}>{item.error}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setBatchResult(null)}
+                className="px-4 py-2 rounded-xl text-sm font-medium cursor-pointer"
+                style={{ color: 'var(--text-secondary)', background: 'var(--bg-inset)' }}
+              >
+                继续导入
+              </button>
+              <button
+                onClick={closeBatch}
+                className="px-5 py-2 rounded-xl text-sm font-medium text-white cursor-pointer"
+                style={{ background: 'var(--accent)' }}
+              >
+                完成
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                Token 列表
+                <span className="ml-1 font-normal" style={{ color: 'var(--text-tertiary)' }}>（每行一个，自动识别 AT 或 RT）</span>
+              </label>
+              <textarea
+                value={batchTokens}
+                onChange={(e) => setBatchTokens(e.target.value)}
+                rows={8}
+                placeholder={'rt_xxxxxxxx（Refresh Token，rt_ 开头）\neyJhbGci...（Access Token，JWT 格式）\n...'}
+                className="w-full px-3 py-2.5 text-sm outline-none transition-all resize-none"
+                style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: '12px', lineHeight: '1.6' }}
+                onFocus={inputFocus as React.FocusEventHandler<HTMLTextAreaElement>}
+                onBlur={inputBlur as React.FocusEventHandler<HTMLTextAreaElement>}
+              />
+              <p className="text-[11px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                以 <code style={{ fontFamily: 'var(--font-mono)' }}>rt_</code> 开头识别为 RT，否则视为 AT。以邮箱为唯一标识，已存在则更新 Token。
+              </p>
+            </div>
+            <div>
+              <label className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                分组 <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>（可选）</span>
+              </label>
+              <select
+                value={batchGroupId ?? ''}
+                onChange={(e) => setBatchGroupId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full px-3 py-2.5 text-sm outline-none transition-all"
+                style={inputStyle}
+                onFocus={inputFocus}
+                onBlur={inputBlur}
+              >
+                <option value="">未分组</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={closeBatch}
+                className="px-4 py-2 rounded-xl text-sm font-medium cursor-pointer"
+                style={{ color: 'var(--text-secondary)', background: 'var(--bg-inset)' }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleBatchImport}
+                disabled={batchImporting || !batchTokens.trim()}
+                className="px-5 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 transition-all cursor-pointer"
+                style={{ background: 'var(--accent)' }}
+                onMouseEnter={(e) => { if (!batchImporting) e.currentTarget.style.background = 'var(--accent-hover)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)' }}
+              >
+                {batchImporting ? '导入中...' : '开始导入'}
+              </button>
+            </div>
+          </div>
+        )}
       </FormModal>
 
       {/* 删除确认对话框 */}

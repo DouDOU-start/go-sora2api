@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/DouDOU-start/go-sora2api/server/model"
@@ -223,4 +224,130 @@ func (h *AdminHandler) GetAccountStatusDirect(c *gin.Context) {
 
 	h.db.First(&account, accountID)
 	c.JSON(http.StatusOK, h.buildAccountResponse(account))
+}
+
+// BatchImportAccounts POST /admin/accounts/batch
+// 批量导入账号：自动识别 RT（rt_ 前缀）或 AT，以邮箱为唯一标识 upsert
+func (h *AdminHandler) BatchImportAccounts(c *gin.Context) {
+	var req model.AdminBatchImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(req.Tokens) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tokens 不能为空"})
+		return
+	}
+
+	// 验证分组
+	if req.GroupID != nil {
+		var group model.SoraAccountGroup
+		if err := h.db.First(&group, *req.GroupID).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "指定的账号组不存在"})
+			return
+		}
+	}
+
+	result := model.AdminBatchImportResult{}
+	// 单个 token 刷新最多等 30s，整批最多 5 分钟
+	batchCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	for _, rawToken := range req.Tokens {
+		token := strings.TrimSpace(rawToken)
+		if token == "" {
+			continue
+		}
+
+		result.Total++
+		item := model.AdminBatchImportItemResult{
+			Token: model.MaskToken(token),
+		}
+
+		isRT := strings.HasPrefix(token, "rt_")
+
+		// 构造待操作的账号
+		acc := model.SoraAccount{
+			GroupID: req.GroupID,
+			Enabled: true,
+			Status:  model.AccountStatusActive,
+		}
+
+		if isRT {
+			acc.RefreshToken = token
+			// 通过 RT 换取 AT
+			refreshCtx, refreshCancel := context.WithTimeout(batchCtx, 30*time.Second)
+			err := h.manager.RefreshSingleToken(refreshCtx, &acc)
+			refreshCancel()
+			if err != nil {
+				item.Action = "failed"
+				item.Error = fmt.Sprintf("刷新 RT 获取 AT 失败: %v", err)
+				result.Failed++
+				result.Details = append(result.Details, item)
+				continue
+			}
+		} else {
+			acc.AccessToken = token
+		}
+
+		// 从 AT 提取邮箱
+		if acc.AccessToken != "" {
+			acc.Email = model.ExtractEmailFromJWT(acc.AccessToken)
+		}
+		item.Email = acc.Email
+
+		// 以邮箱为唯一标识做 upsert
+		if acc.Email != "" {
+			var existing model.SoraAccount
+			if err := h.db.Where("email = ?", acc.Email).First(&existing).Error; err == nil {
+				// 更新已有账号
+				if isRT {
+					existing.RefreshToken = acc.RefreshToken
+					existing.AccessToken = acc.AccessToken
+				} else {
+					existing.AccessToken = acc.AccessToken
+					// 保留原有 RT，不覆盖
+				}
+				if req.GroupID != nil {
+					existing.GroupID = req.GroupID
+				}
+				if err := h.db.Save(&existing).Error; err != nil {
+					item.Action = "failed"
+					item.Error = fmt.Sprintf("更新账号失败: %v", err)
+					result.Failed++
+				} else {
+					item.Action = "updated"
+					result.Updated++
+					go func(a model.SoraAccount) {
+						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+						defer cancel()
+						_ = h.manager.SyncSingleAccountCredit(ctx, &a)
+						_ = h.manager.SyncSingleAccountSubscription(ctx, &a)
+					}(existing)
+				}
+				result.Details = append(result.Details, item)
+				continue
+			}
+		}
+
+		// 新建账号
+		if err := h.db.Create(&acc).Error; err != nil {
+			item.Action = "failed"
+			item.Error = fmt.Sprintf("创建账号失败: %v", err)
+			result.Failed++
+		} else {
+			item.Action = "created"
+			result.Created++
+			go func(a model.SoraAccount) {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				_ = h.manager.SyncSingleAccountCredit(ctx, &a)
+				_ = h.manager.SyncSingleAccountSubscription(ctx, &a)
+			}(acc)
+		}
+		result.Details = append(result.Details, item)
+	}
+
+	c.JSON(http.StatusOK, result)
 }

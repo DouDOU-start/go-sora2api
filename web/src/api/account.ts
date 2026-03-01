@@ -1,5 +1,5 @@
 import client from './client'
-import type { SoraAccount, CreateAccountRequest } from '../types/account'
+import type { SoraAccount, CreateAccountRequest, BatchImportRequest, BatchImportResult } from '../types/account'
 
 export function listAllAccounts() {
   return client.get<SoraAccount[]>('/admin/accounts')
@@ -27,4 +27,8 @@ export function getAccountStatus(accountId: number) {
 
 export function revealAccountTokens(accountId: number) {
   return client.get<{ access_token: string; refresh_token: string }>(`/admin/accounts/${accountId}/tokens`)
+}
+
+export function batchImportAccounts(data: BatchImportRequest) {
+  return client.post<BatchImportResult>('/admin/accounts/batch', data)
 }

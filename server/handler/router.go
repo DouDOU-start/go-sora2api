@@ -116,6 +116,7 @@ func SetupRouter(cfg *RouterConfig) *gin.Engine {
 
 		// 账号管理
 		adminOnly.GET("/accounts", adminHandler.ListAllAccounts)
+		adminOnly.POST("/accounts/batch", adminHandler.BatchImportAccounts)
 		adminOnly.POST("/accounts", adminHandler.CreateAccountDirect)
 		adminOnly.PUT("/accounts/:id", adminHandler.UpdateAccountDirect)
 		adminOnly.DELETE("/accounts/:id", adminHandler.DeleteAccountDirect)
