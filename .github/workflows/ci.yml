@@ -17,6 +17,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Create dist placeholder (required by go:embed)
+        run: mkdir -p server/dist && touch server/dist/index.html
+
       - name: go vet
         run: go vet ./...
 
