@@ -33,11 +33,6 @@ export default function Layout() {
   const isAdmin = role === 'admin'
   const navItems = allNavItems.filter((item) => isAdmin || !item.adminOnly)
 
-  // 路由变化时关闭移动端菜单
-  useEffect(() => {
-    setMobileOpen(false)
-  }, [location.pathname])
-
   // 移动端菜单打开时禁止滚动
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? 'hidden' : ''
@@ -261,6 +256,7 @@ export default function Layout() {
                     key={item.path}
                     to={item.path}
                     end={item.path === '/'}
+                    onClick={() => setMobileOpen(false)}
                     className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-200"
                     style={({ isActive }) => ({
                       background: isActive ? 'var(--bg-sidebar-active)' : 'transparent',

@@ -27,11 +27,7 @@ export default function Login() {
     }
   }, [mode])
 
-  // 切换模式时清空错误
-  useEffect(() => {
-    setError('')
-  }, [mode])
-
+  // 切换模式时清空错误（移到事件处理器中，避免 setState-in-effect）
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -149,7 +145,7 @@ export default function Login() {
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => setMode(tab.key)}
+                onClick={() => { setMode(tab.key); setError('') }}
                 className="flex-1 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 cursor-pointer"
                 style={{
                   background: mode === tab.key ? 'var(--bg-surface)' : 'transparent',

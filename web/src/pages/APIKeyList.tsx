@@ -5,7 +5,7 @@ import GlassCard from '../components/ui/GlassCard'
 import LoadingState from '../components/ui/LoadingState'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import FormModal from '../components/ui/FormModal'
-import { toast } from '../components/ui/Toast'
+import { toast } from '../components/ui/toastStore'
 import { getErrorMessage } from '../api/client'
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
@@ -58,32 +58,56 @@ export default function APIKeyList() {
 
   const mountedRef = useRef(true)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params: Record<string, unknown> = { page, page_size: PAGE_SIZE }
-      if (keyword) params.keyword = keyword
-      if (enabled === 'true') params.enabled = true
-      if (enabled === 'false') params.enabled = false
-      if (groupId === 'null') params.group_id = 'null'
-      else if (groupId) params.group_id = Number(groupId)
-      const [keysRes, groupsRes] = await Promise.all([listAPIKeys(params), listGroups()])
-      if (mountedRef.current) {
-        setKeys(keysRes.data.list ?? [])
-        setTotal(keysRes.data.total)
-        setGroups(groupsRes.data ?? [])
-      }
-    } catch { /* ignore */ }
-    if (mountedRef.current) setLoading(false)
+  const fetchData = useCallback(async () => {
+    const params: Record<string, unknown> = { page, page_size: PAGE_SIZE }
+    if (keyword) params.keyword = keyword
+    if (enabled === 'true') params.enabled = true
+    if (enabled === 'false') params.enabled = false
+    if (groupId === 'null') params.group_id = 'null'
+    else if (groupId) params.group_id = Number(groupId)
+    const [keysRes, groupsRes] = await Promise.all([listAPIKeys(params), listGroups()])
+    return {
+      list: keysRes.data.list ?? [],
+      total: keysRes.data.total,
+      groups: groupsRes.data ?? [],
+    }
   }, [page, keyword, enabled, groupId])
 
   useEffect(() => {
     mountedRef.current = true
-    load()
-    return () => { mountedRef.current = false }
-  }, [load])
+    let canceled = false
+    void (async () => {
+      try {
+        const data = await fetchData()
+        if (!canceled && mountedRef.current) {
+          setKeys(data.list)
+          setTotal(data.total)
+          setGroups(data.groups)
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!canceled && mountedRef.current) setLoading(false)
+      }
+    })()
+    return () => { canceled = true; mountedRef.current = false }
+  }, [fetchData])
 
-  const reload = useCallback(() => load(), [load])
+  const reload = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await fetchData()
+      if (mountedRef.current) {
+        setKeys(data.list)
+        setTotal(data.total)
+        setGroups(data.groups)
+      }
+    } catch {
+      // ignore
+    } finally {
+      if (mountedRef.current) setLoading(false)
+    }
+  }, [fetchData])
 
   const closeForm = () => {
     setShowForm(false)

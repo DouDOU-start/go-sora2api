@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { listCharacters, deleteCharacter, toggleCharacterVisibility, getCharacterImageUrl } from '../api/character'
 import type { SoraCharacter } from '../types/character'
 import { useAuthStore } from '../store/authStore'
@@ -6,7 +6,7 @@ import GlassCard from '../components/ui/GlassCard'
 import StatusBadge from '../components/ui/StatusBadge'
 import LoadingState from '../components/ui/LoadingState'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
-import { toast } from '../components/ui/Toast'
+import { toast } from '../components/ui/toastStore'
 import { getErrorMessage } from '../api/client'
 import { motion, AnimatePresence } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
@@ -63,7 +63,7 @@ export default function CharacterList() {
   // 复制反馈
   const [copied, setCopied] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const params: { status?: string; is_public?: boolean; page: number; page_size: number } = { page, page_size: pageSize }
       if (status) params.status = status
@@ -75,14 +75,14 @@ export default function CharacterList() {
         setTotal(res.data.total)
       }
     } catch { /* ignore */ }
-  }
+  }, [page, pageSize, status, isPublic])
 
   useEffect(() => {
     mountedRef.current = true
     setLoading(true)
     load().finally(() => { if (mountedRef.current) setLoading(false) })
     return () => { mountedRef.current = false }
-  }, [status, isPublic, page])
+  }, [load])
 
   // 自动刷新（有 processing 角色或查看全部时）
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function CharacterList() {
       const timer = setInterval(load, 10000)
       return () => clearInterval(timer)
     }
-  }, [status, isPublic, page])
+  }, [load, status])
 
   const totalPages = Math.ceil(total / pageSize)
 

@@ -34,8 +34,33 @@ export default function Settings() {
   const [upgrading, setUpgrading] = useState(false)
 
   useEffect(() => {
-    loadSettings()
-    loadVersion()
+    let canceled = false
+    void (async () => {
+      try {
+        const [settingsResult, versionResult] = await Promise.allSettled([getSettings(), getVersion()])
+        if (canceled) return
+
+        if (settingsResult.status === 'fulfilled') {
+          const data = settingsResult.value.data
+          setProxyUrl(data.proxy_url || '')
+          setTokenRefreshInterval(data.token_refresh_interval || '30m')
+          setCreditSyncInterval(data.credit_sync_interval || '10m')
+          setSubscriptionSyncInterval(data.subscription_sync_interval || '6h')
+        } else {
+          setMessage({ type: 'error', text: '加载设置失败' })
+        }
+
+        if (versionResult.status === 'fulfilled') {
+          setVersionInfo(versionResult.value.data)
+        }
+      } finally {
+        if (!canceled) setLoading(false)
+      }
+    })()
+
+    return () => {
+      canceled = true
+    }
   }, [])
 
   // 消息自动消失
@@ -45,29 +70,6 @@ export default function Settings() {
       return () => clearTimeout(t)
     }
   }, [message])
-
-  const loadVersion = async () => {
-    try {
-      const res = await getVersion()
-      setVersionInfo(res.data)
-    } catch {
-      // 忽略版本获取失败
-    }
-  }
-
-  const loadSettings = async () => {
-    try {
-      const res = await getSettings()
-      const data = res.data
-      setProxyUrl(data.proxy_url || '')
-      setTokenRefreshInterval(data.token_refresh_interval || '30m')
-      setCreditSyncInterval(data.credit_sync_interval || '10m')
-      setSubscriptionSyncInterval(data.subscription_sync_interval || '6h')
-    } catch {
-      setMessage({ type: 'error', text: '加载设置失败' })
-    }
-    setLoading(false)
-  }
 
   const handleSave = async () => {
     setSaving(true)

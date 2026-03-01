@@ -1,48 +1,11 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { type ToastItem, subscribe, getToasts, removeToast } from './toastStore'
 
-type ToastType = 'success' | 'error' | 'info'
-
-interface ToastItem {
-  id: number
-  type: ToastType
-  message: string
-}
-
-// 简易外部 store，让 toast 可以在组件外调用
-let toasts: ToastItem[] = []
-let nextId = 0
-const listeners = new Set<() => void>()
-
-function emit() {
-  listeners.forEach((l) => l())
-}
-
-export const toast = {
-  success(message: string) {
-    toasts = [...toasts, { id: ++nextId, type: 'success', message }]
-    emit()
-  },
-  error(message: string) {
-    toasts = [...toasts, { id: ++nextId, type: 'error', message }]
-    emit()
-  },
-  info(message: string) {
-    toasts = [...toasts, { id: ++nextId, type: 'info', message }]
-    emit()
-  },
-}
+type ToastType = ToastItem['type']
 
 function useToastStore() {
-  return useSyncExternalStore(
-    (cb) => { listeners.add(cb); return () => listeners.delete(cb) },
-    () => toasts,
-  )
-}
-
-function removeToast(id: number) {
-  toasts = toasts.filter((t) => t.id !== id)
-  emit()
+  return useSyncExternalStore(subscribe, getToasts)
 }
 
 const colorMap: Record<ToastType, { bg: string; color: string; icon: string }> = {

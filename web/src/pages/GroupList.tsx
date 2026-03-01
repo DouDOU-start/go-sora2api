@@ -4,7 +4,7 @@ import GlassCard from '../components/ui/GlassCard'
 import LoadingState from '../components/ui/LoadingState'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import FormModal from '../components/ui/FormModal'
-import { toast } from '../components/ui/Toast'
+import { toast } from '../components/ui/toastStore'
 import { getErrorMessage } from '../api/client'
 import { motion } from 'framer-motion'
 

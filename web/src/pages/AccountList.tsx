@@ -7,7 +7,7 @@ import StatusBadge from '../components/ui/StatusBadge'
 import LoadingState from '../components/ui/LoadingState'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import FormModal from '../components/ui/FormModal'
-import { toast } from '../components/ui/Toast'
+import { toast } from '../components/ui/toastStore'
 import { getErrorMessage } from '../api/client'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
@@ -76,29 +76,53 @@ export default function AccountList() {
 
   const mountedRef = useRef(true)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [aRes, gRes] = await Promise.all([
-        listAccounts({ page, page_size: PAGE_SIZE, status: status || undefined, group_id: groupId ? Number(groupId) : undefined, keyword: keyword || undefined }),
-        listGroups(),
-      ])
-      if (mountedRef.current) {
-        setAccounts(aRes.data.list ?? [])
-        setTotal(aRes.data.total)
-        setGroups(gRes.data ?? [])
-      }
-    } catch { /* ignore */ }
-    if (mountedRef.current) setLoading(false)
+  const fetchData = useCallback(async () => {
+    const [aRes, gRes] = await Promise.all([
+      listAccounts({ page, page_size: PAGE_SIZE, status: status || undefined, group_id: groupId ? Number(groupId) : undefined, keyword: keyword || undefined }),
+      listGroups(),
+    ])
+    return {
+      accounts: aRes.data.list ?? [],
+      total: aRes.data.total,
+      groups: gRes.data ?? [],
+    }
   }, [page, status, groupId, keyword])
 
   useEffect(() => {
     mountedRef.current = true
-    load()
-    return () => { mountedRef.current = false }
-  }, [load])
+    let canceled = false
+    void (async () => {
+      try {
+        const data = await fetchData()
+        if (!canceled && mountedRef.current) {
+          setAccounts(data.accounts)
+          setTotal(data.total)
+          setGroups(data.groups)
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!canceled && mountedRef.current) setLoading(false)
+      }
+    })()
+    return () => { canceled = true; mountedRef.current = false }
+  }, [fetchData])
 
-  const reload = useCallback(() => load(), [load])
+  const reload = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await fetchData()
+      if (mountedRef.current) {
+        setAccounts(data.accounts)
+        setTotal(data.total)
+        setGroups(data.groups)
+      }
+    } catch {
+      // ignore
+    } finally {
+      if (mountedRef.current) setLoading(false)
+    }
+  }, [fetchData])
 
   const closeForm = () => {
     setShowForm(false)

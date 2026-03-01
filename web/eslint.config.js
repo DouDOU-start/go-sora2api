@@ -19,5 +19,12 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // react-hooks v5 compiler 规则，降为警告避免误报常规异步数据加载模式
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/immutability': 'warn',
+      // 允许组件文件同时导出工具函数/常量
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
   },
 ])
