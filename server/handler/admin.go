@@ -33,7 +33,7 @@ func (h *AdminHandler) GetSettings(c *gin.Context) {
 
 	// 返回结构化的设置
 	c.JSON(http.StatusOK, gin.H{
-		model.SettingProxyURL:                 all[model.SettingProxyURL],
+		model.SettingProxyURL:                 h.settings.GetProxyURL(),
 		model.SettingTokenRefreshInterval:     all[model.SettingTokenRefreshInterval],
 		model.SettingCreditSyncInterval:       all[model.SettingCreditSyncInterval],
 		model.SettingSubscriptionSyncInterval: all[model.SettingSubscriptionSyncInterval],

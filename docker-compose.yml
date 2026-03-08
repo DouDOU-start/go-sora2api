@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-sora2api}"
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sora2api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  sora2api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HTTP_PROXY: "${HTTP_PROXY:-}"
+        HTTPS_PROXY: "${HTTPS_PROXY:-}"
+        ALL_PROXY: "${ALL_PROXY:-}"
+        NO_PROXY: "${NO_PROXY:-127.0.0.1,localhost,postgres}"
+    image: sora2api:local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CONFIG_PATH: "/app/config.yaml"
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "8686"
+      ADMIN_USER: "${ADMIN_USER:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin123}"
+      JWT_SECRET: "${JWT_SECRET:-}"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sora2api}?sslmode=disable"
+      APP_PROXY_URL: "${APP_PROXY_URL:-}"
+      HTTP_PROXY: "${HTTP_PROXY:-}"
+      HTTPS_PROXY: "${HTTPS_PROXY:-}"
+      ALL_PROXY: "${ALL_PROXY:-}"
+      NO_PROXY: "${NO_PROXY:-127.0.0.1,localhost,postgres}"
+      DB_LOG_LEVEL: "${DB_LOG_LEVEL:-warn}"
+      AUTO_MIGRATE: "${AUTO_MIGRATE:-true}"
+    ports:
+      - "${APP_PORT:-8686}:8686"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -Y off -qO- http://127.0.0.1:8686/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

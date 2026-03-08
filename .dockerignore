@@ -1,0 +1,9 @@
+.git
+.github
+.claude
+bin
+release
+server/dist
+web/dist
+web/node_modules
+.env
