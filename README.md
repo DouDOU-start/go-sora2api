@@ -28,6 +28,38 @@ OpenAI Sora 视频/图片生成 API 代理平台，提供 Go SDK、Web 管理后
 
 ## 快速部署
 
+### Docker Compose
+
+```bash
+cp .env.example .env
+# 按需修改 .env 中的管理员账号、密码、数据库参数和代理
+
+# 如果项目访问外网必须经过代理，至少设置：
+# APP_PROXY_URL=http://user:pass@host:port
+# 如果构建镜像也要走代理，再同时设置 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY
+
+docker compose up -d --build
+```
+
+启动后访问 `http://localhost:8686`，默认管理员账号密码来自 `.env` 中的 `ADMIN_USER` / `ADMIN_PASSWORD`。
+
+常用命令：
+
+```bash
+docker compose logs -f sora2api
+docker compose ps
+docker compose down
+docker compose down -v  # 连 PostgreSQL 数据卷一起删除
+```
+
+说明：
+- Compose 会自动启动 `postgres` 和 `sora2api` 两个服务。
+- 容器首次启动时会根据环境变量自动生成 `/app/config.yaml`，无需手工准备配置文件。
+- 如需自定义 YAML 配置，可挂载到容器内 `/app/config.yaml`，并保留 `CONFIG_PATH=/app/config.yaml`。
+- `APP_PROXY_URL` 用于应用访问 Sora/OpenAI；当它存在时，会覆盖后台“系统设置”中的 `proxy_url`。
+- `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY` 用于 Docker 构建和容器运行时的标准代理环境变量。
+- Linux Docker 环境下，Compose 已将 `host.docker.internal` 映射到宿主机网关；如果你的代理跑在宿主机上，可直接写 `http://host.docker.internal:端口`。
+
 ### 一键安装（推荐）
 
 ```bash

@@ -2,6 +2,7 @@ package service
 
 import (
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -77,6 +78,12 @@ func (s *SettingsStore) GetAll() map[string]string {
 
 // GetProxyURL 获取全局代理 URL（原始值，格式解析由 sora.New 统一处理）
 func (s *SettingsStore) GetProxyURL() string {
+	// 环境变量优先，便于容器化部署统一下发代理配置。
+	for _, key := range []string{"APP_PROXY_URL", "ALL_PROXY", "HTTPS_PROXY", "HTTP_PROXY"} {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+	}
 	return s.Get(model.SettingProxyURL)
 }
 
